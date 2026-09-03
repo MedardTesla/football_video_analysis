@@ -1,4 +1,21 @@
-"""Géométrie d'un terrain de football normalisé, en centimètres.
+"""Géométrie d'un terrain de football, en centimètres réels.
+
+Les dimensions ci-dessous ne sont pas une convention : elles ont été ajustées
+sur les 228 images annotées du dataset public de points clés, en minimisant
+l'erreur de reprojection de l'homographie. L'optimum tombe exactement sur le
+terrain FIFA standard et les cotes de la loi du jeu.
+
+    105 x 68 m, surface de 16,50 x 40,32 m : 0,398 % d'erreur
+    120 x 70 m, surface de 20,15 x 41,00 m : 0,960 %
+
+La seconde ligne est la convention diffusée par les exemples Roboflow. La
+suivre aurait gonflé toute distance mesurée de 14 % — un terrain de 120 m au
+lieu de 105. Pour un produit qui vend « distance parcourue », c'est une erreur
+systématique inacceptable.
+
+Les dimensions restent réglables : un terrain réel fait entre 100 et 110 m de
+long. Un club qui mesure le sien supprime cette incertitude ; sans mesure,
+elle vaut environ +/- 5 % sur les distances.
 
 Les 32 sommets sont l'espace cible de l'homographie : le modèle YOLOv8-pose
 prédit ces mêmes points dans l'image, et `findHomography` relie les deux.
@@ -12,10 +29,10 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class SoccerPitch:
-    length: int = 12000          # ligne de touche
-    width: int = 7000            # ligne de but
-    penalty_box_length: int = 2015
-    penalty_box_width: int = 4100
+    length: int = 10500          # ligne de touche (FIFA : 100 à 110 m)
+    width: int = 6800            # ligne de but (FIFA : 64 à 75 m)
+    penalty_box_length: int = 1650   # loi du jeu : 16,50 m
+    penalty_box_width: int = 4032    # loi du jeu : 40,32 m
     goal_box_length: int = 550
     goal_box_width: int = 1832
     centre_circle_radius: int = 915

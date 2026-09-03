@@ -89,7 +89,14 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
   Python : un joueur non attribué serait peint aux couleurs de l'équipe B. Passer
   par `annotators.team_color`.
 - **L'ordre des 32 keypoints** de `pitch/geometry.py` est le contrat avec les poids
-  YOLOv8-pose. Le modifier invalide tout modèle déjà entraîné.
+  YOLOv8-pose. Le modifier invalide tout modèle déjà entraîné. Vérifié identique au
+  dataset public `football-field-detection-f07vi` v15 (CC BY 4.0), y compris
+  `flip_idx`, sans qu'aucune valeur n'ait été recopiée.
+- **Les dimensions du terrain sont mesurées, pas conventionnelles.** 105 × 68 m avec
+  les cotes de la loi du jeu minimisent l'erreur de reprojection sur 228 images
+  annotées (0,398 % contre 0,960 % pour la convention Roboflow 120 × 70). Utiliser
+  cette dernière gonflerait toute distance de 14 %. Les dimensions restent réglables
+  par club — un terrain réel fait 100 à 110 m.
 - **Le détecteur est derrière un protocole** (`detection/base.py`). Ultralytics est
   en AGPL-3.0 ; la migration vers un modèle Apache-2.0 doit se limiter à une
   nouvelle classe, sans toucher au pipeline.

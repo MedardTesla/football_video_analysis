@@ -116,10 +116,12 @@ def test_distances_are_physically_plausible(video, tmp_path):
 
 def test_players_stay_inside_pitch_bounds(video, tmp_path):
     """L'homographie doit projeter dans les limites du terrain."""
-    pipeline.run(video, tmp_path / "out.mp4", Config())
-    # Contrôle indirect : la distance parcourue reste cohérente avec un
-    # terrain de 120 m, pas avec une projection partie à l'infini.
-    assert PITCH.length == 12000
+    result = pipeline.run(video, tmp_path / "out.mp4", Config())
+    # Une projection partie à l'infini produirait des distances absurdes ;
+    # la borne vient du terrain lui-même, jamais d'une constante recopiée.
+    diagonale_m = ((PITCH.length / 100) ** 2 + (PITCH.width / 100) ** 2) ** 0.5
+    for player in result.stats["players"]:
+        assert player["distance_m"] <= diagonale_m
 
 
 def test_runs_without_radar(video, tmp_path):

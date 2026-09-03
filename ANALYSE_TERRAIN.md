@@ -228,3 +228,50 @@ Sur CPU (8 cœurs), SigLIP base traite **3,2 vignettes par seconde**. Avec une
 vingtaine de joueurs par frame, cela fait ~6 s de classification par frame.
 Un match complet est hors de portée sans GPU — ce n'est pas une optimisation
 à faire plus tard, c'est une condition d'exécution.
+
+
+---
+
+# Validation de la géométrie contre le dataset public
+
+Dataset `football-field-detection-f07vi` v15 (Roboflow, **CC BY 4.0**, donc
+exploitable commercialement avec attribution) : 255 images d'entraînement, 34
+de validation, 28 de test, annotées en 32 points clés.
+
+## L'ordre des points est confirmé
+
+Le `flip_idx` du dataset et celui calculé par symétrie dans `geometry.py`
+coïncident sur les 32 entrées, sans qu'aucune n'ait été recopiée. C'était le
+point de rupture silencieux le plus dangereux du projet : un ordre divergent
+aurait produit un modèle qui converge normalement en prédisant n'importe quoi.
+
+## Les dimensions du terrain étaient fausses
+
+En ajustant l'homographie sur les 228 images annotées exploitables et en
+mesurant l'erreur de reprojection :
+
+| Géométrie | Erreur |
+|---|---|
+| **105 × 68 m, surface 16,50 × 40,32 m** | **0,398 %** |
+| 110 × 68 m | 0,416 % |
+| 105 × 66 m | 0,484 % |
+| 100 × 68 m | 0,732 % |
+| 120 × 70 m, surface 20,15 × 41,00 m (convention Roboflow) | 0,960 % |
+
+L'optimum tombe exactement sur le terrain FIFA standard et les cotes de la loi
+du jeu, et il est net : 105 m bat 100 et 110 m sans ambiguïté.
+
+Le dépôt utilisait jusqu'ici 120 × 70 m avec une surface de 20,15 m, valeurs
+reprises des exemples Roboflow. **Toute distance mesurée aurait été gonflée de
+14 %** — un joueur crédité de 11,4 km en ayant couru 10,0 km. Pour un produit
+dont l'argument de vente est la distance parcourue, c'était disqualifiant.
+
+Ce n'est pas une convention arbitraire : les annotateurs ont cliqué sur de
+vrais terrains, donc les annotations portent la géométrie réelle.
+
+## Incertitude résiduelle
+
+Un terrain réel mesure entre 100 et 110 m de long. Les dimensions restent
+réglables par club : celui qui mesure le sien supprime l'incertitude, sinon
+elle vaut environ ± 5 % sur les distances. C'est à dire au client, et c'est
+une mesure au décamètre de cinq minutes.

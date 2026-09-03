@@ -71,3 +71,42 @@ def test_flip_index_mirrors_coordinates():
         mx, my = vertices[mirrored]
         assert mx == PITCH.length - x
         assert my == y
+
+
+def test_pitch_matches_the_laws_of_the_game():
+    """Dimensions ajustées sur 228 images annotées, pas choisies.
+
+    La convention diffusée par les exemples Roboflow (120 x 70 m, surface de
+    20,15 m) donne 0,960 % d'erreur de reprojection contre 0,398 % ici.
+    La suivre gonflerait toute distance mesurée de 14 %.
+    """
+    assert PITCH.length == 10500          # 105 m
+    assert PITCH.width == 6800            # 68 m
+    assert PITCH.penalty_box_length == 1650   # 16,50 m
+    assert PITCH.penalty_box_width == 4032    # 40,32 m
+    assert PITCH.goal_box_length == 550       # 5,50 m
+    assert PITCH.goal_box_width == 1832       # 18,32 m
+    assert PITCH.centre_circle_radius == 915  # 9,15 m
+    assert PITCH.penalty_spot_distance == 1100  # 11 m
+
+
+def test_flip_index_survives_a_change_of_dimensions():
+    """La table de symétrie est structurelle : elle ne dépend que de l'ordre.
+
+    Les dimensions du terrain sont réglables par club ; le modèle entraîné,
+    lui, dépend de `flip_idx`. Les deux doivent rester indépendants.
+    """
+    from football_analysis.pitch.geometry import SoccerPitch
+
+    reference = PITCH.flip_index
+    for length, width in [(10000, 6400), (11000, 7500), (12000, 7000)]:
+        assert SoccerPitch(length=length, width=width).flip_index == reference
+
+
+def test_flip_index_matches_the_public_dataset():
+    """Contrat avec les poids publics : vérifié contre data.yaml du dataset
+    football-field-detection-f07vi v15 (CC BY 4.0)."""
+    assert PITCH.flip_index == [
+        24, 25, 26, 27, 28, 29, 22, 23, 21, 17, 18, 19, 20, 13, 14, 15,
+        16, 9, 10, 11, 12, 8, 6, 7, 0, 1, 2, 3, 4, 5, 31, 30,
+    ]

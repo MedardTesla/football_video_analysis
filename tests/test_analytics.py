@@ -29,8 +29,13 @@ def test_missing_detection_does_not_invent_movement():
 
 
 def test_control_share_is_symmetric_for_mirrored_teams():
-    team_a = np.array([[3000.0, 3500.0]])
-    team_b = np.array([[9000.0, 3500.0]])
+    """Positions dérivées du terrain, pas codées en dur : ses dimensions
+    sont réglables et ont déjà changé une fois."""
+    from football_analysis.pitch.geometry import PITCH
+
+    x, y = PITCH.length * 0.25, PITCH.width / 2
+    team_a = np.array([[x, y]])
+    team_b = np.array([[PITCH.length - x, y]])
     share_a, share_b = control_share(team_a, team_b)
     assert abs(share_a - share_b) < 0.02
     assert abs(share_a + share_b - 1.0) < 1e-6
