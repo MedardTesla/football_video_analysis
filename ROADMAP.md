@@ -11,6 +11,7 @@
 | 5 | Homographie bidirectionnelle | Fait — `pitch/view.py` (+ lissage fenêtre glissante) |
 | 6 | Voronoï / trajectoire ballon | Fait — `analytics/` |
 | 7 | Optimisation vitesse | Non commencé — non bloquant en traitement asynchrone |
+| 9 | Péremption d'homographie + couverture | Fait — `pitch/view.py`, `analytics/stats.py` |
 | 8 | Pipeline + CLI + statistiques JSON | Fait — `pipeline.py`, `cli.py`, `analytics/stats.py` |
 
 Aucun modèle entraîné n'est présent dans le dépôt. Rien n'est exécutable de bout en

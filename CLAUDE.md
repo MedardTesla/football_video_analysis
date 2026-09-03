@@ -97,6 +97,17 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
   les labels, et le coin haut gauche garde l'indice du coin haut droit. Panne
   silencieuse — l'entraînement converge quand même. `tests/test_training_config.py`
   vérifie la cohérence entre le data.yaml et la géométrie.
+- **L'homographie se périme.** `HomographyCache` la refuse au-delà de
+  `homography_max_age_s` (2 s par défaut). Réutiliser indéfiniment la dernière
+  valide était le comportement d'origine ; sur vidéo réelle, des trous de 12
+  minutes ont été mesurés, pendant lesquels la caméra panoramique plusieurs fois
+  et les positions projetées dérivent silencieusement. Les frames concernées sont
+  marquées non mesurées, et `MatchStats.mark_unmeasured` oublie les dernières
+  positions connues — sans quoi la reprise compterait le trajet du trou entier
+  comme une course.
+- **Les totaux sont plancher, jamais extrapolés.** `coverage` dit quelle part du
+  match a été mesurée. Une distance affichée est toujours inférieure ou égale à
+  la réalité, ce que le rapport indique au club.
 - **Le rapport ne cache pas ses angles morts.** `report._caveats` déduit des données
   elles-mêmes ce qui doit être signalé au club (terrain non localisé, identités
   fragmentées). Un club qui repère seul une incohérence perd confiance dans le reste.

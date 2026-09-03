@@ -66,6 +66,11 @@ class PitchConfig:
     min_keypoints: int = 6
     # Lissage de la matrice d'homographie sur fenêtre glissante.
     homography_window: int = 5
+    # Durée au-delà de laquelle une homographie sans repère frais est
+    # considérée périmée. Deux secondes : sur une caméra qui suit le jeu,
+    # c'est déjà un panoramique complet. Passé ce délai, les frames sont
+    # marquées non mesurées plutôt que projetées au hasard.
+    homography_max_age_s: float = 2.0
     # Écarte les personnes hors pelouse : staff, remplaçants, spectateurs.
     # Sur une caméra de bord de touche, ils représentent un tiers des
     # détections. Le masque est recalculé tous les N frames, la caméra

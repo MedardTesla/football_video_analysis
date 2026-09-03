@@ -25,7 +25,7 @@ from .config import BALL_ID, GOALKEEPER_ID, PLAYER_ID, REFEREE_ID, Config
 from .detection.detector import Detector
 from .pitch.keypoints import PitchKeypointDetector, transformer_from_keypoints
 from .pitch.mask import on_pitch, playable_area
-from .pitch.view import ViewTransformer
+from .pitch.view import HomographyCache
 from .render import annotators
 from .teams.classifier import TeamClassifier, assign_goalkeeper
 from .tracking.tracker import PersonTracker, ball_position
@@ -105,7 +105,9 @@ def run(
         window=config.ball.smoothing_window,
     )
     stats = MatchStats(fps=info.fps)
-    last_transformer: ViewTransformer | None = None
+    homography = HomographyCache(
+        max_age_frames=int(config.pitch.homography_max_age_s * info.fps)
+    )
     last_pitch_xy: np.ndarray | None = None
     last_teams: np.ndarray = np.empty(0, dtype=int)
     turf: np.ndarray | None = None
@@ -130,10 +132,12 @@ def run(
             people, ball = tracker.update(detections, frame=frame)
 
             points, confidence = keypoint_detector.detect_one(frame)
-            transformer = transformer_from_keypoints(points, confidence, config.pitch)
-            if transformer is not None:
-                last_transformer = transformer
-            transformer = transformer or last_transformer
+            fresh = transformer_from_keypoints(points, confidence, config.pitch)
+            if fresh is not None:
+                homography.update(fresh, frame_index)
+            # Périmée passé le délai : mieux vaut ne rien mesurer que projeter
+            # au hasard avec une homographie qui ne correspond plus au cadrage.
+            transformer = homography.get(frame_index)
 
             players = people[people.class_id == PLAYER_ID]
             keepers = people[people.class_id == GOALKEEPER_ID]
@@ -152,8 +156,15 @@ def run(
                 else np.empty((0, 2))
             )
 
-            # Statistiques : seulement si la projection terrain est disponible.
-            if len(pitch_xy) == len(teams) and len(pitch_xy):
+            # La couverture mesure la disponibilité de l'homographie, pas la
+            # présence de joueurs : une frame projetable où personne n'est
+            # visible reste une frame mesurée.
+            if transformer is None:
+                stats.mark_unmeasured()
+            else:
+                stats.mark_measured()
+
+            if transformer is not None and len(pitch_xy) == len(teams) and len(pitch_xy):
                 last_pitch_xy, last_teams = pitch_xy, teams
                 for track_id, xy, team in zip(players.tracker_id, pitch_xy, teams):
                     stats.update_player(int(track_id), xy, int(team))

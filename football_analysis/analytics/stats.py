@@ -33,6 +33,8 @@ class MatchStats:
     fps: float
     players: dict[int, PlayerStats] = field(default_factory=dict)
     possession_frames: dict[int, int] = field(default_factory=lambda: defaultdict(int))
+    measured_frames: int = 0
+    unmeasured_frames: int = 0
     _last_xy: dict[int, np.ndarray] = field(default_factory=dict, repr=False)
 
     def update_player(self, track_id: int, xy: np.ndarray, team: int | None) -> None:
@@ -56,6 +58,26 @@ class MatchStats:
         stats.distance_m += step_m
         stats.top_speed_ms = max(stats.top_speed_ms, speed)
 
+    def mark_measured(self) -> None:
+        self.measured_frames += 1
+
+    def mark_unmeasured(self) -> None:
+        """Frame sans homographie exploitable.
+
+        Les dernières positions connues sont oubliées : à la reprise, le
+        joueur aura bougé pendant tout l'intervalle, et compter ce saut comme
+        une course lui attribuerait une distance qu'il n'a pas parcourue —
+        ou, pire, une distance plausible mais fausse.
+        """
+        self.unmeasured_frames += 1
+        self._last_xy.clear()
+
+    @property
+    def coverage(self) -> float:
+        """Fraction du match réellement mesurée."""
+        total = self.measured_frames + self.unmeasured_frames
+        return self.measured_frames / total if total else 0.0
+
     def update_possession(self, team: int | None) -> None:
         if team is not None:
             self.possession_frames[team] += 1
@@ -67,7 +89,12 @@ class MatchStats:
         return {team: count / total for team, count in self.possession_frames.items()}
 
     def to_dict(self) -> dict:
+        total = self.measured_frames + self.unmeasured_frames
         return {
+            "coverage": round(self.coverage, 3),
+            "measured_seconds": round(self.measured_frames / self.fps, 1),
+            "unmeasured_seconds": round(self.unmeasured_frames / self.fps, 1),
+            "total_seconds": round(total / self.fps, 1),
             "possession": self.possession_share(),
             "players": [
                 {

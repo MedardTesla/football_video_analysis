@@ -98,3 +98,40 @@ def test_every_font_family_has_a_local_fallback():
         families = [f.strip().strip('"') for f in declaration.split(":", 1)[1].split(",")]
         webfonts = {"Barlow Condensed", "IBM Plex Sans", "IBM Plex Mono"}
         assert any(f not in webfonts for f in families), declaration
+
+
+def test_coverage_is_shown_before_the_figures():
+    """Le club doit savoir sur quelle portion du match portent les chiffres."""
+    stats = dict(STATS, coverage=0.47, unmeasured_seconds=2900, measured_seconds=2500)
+    page = render(stats, META)
+    assert "47%" in page
+    assert page.index("du match analysé") < page.index("Possession")
+
+
+def test_low_coverage_warns_against_individual_figures():
+    stats = dict(STATS, coverage=0.42, unmeasured_seconds=3100)
+    page = render(stats, META)
+    assert "cov--bad" in page
+    assert "ne pas se fier aux chiffres individuels" in page
+
+
+def test_good_coverage_is_not_alarming():
+    stats = dict(STATS, coverage=0.94, unmeasured_seconds=320)
+    page = render(stats, META)
+    assert "cov--ok" in page
+    assert "fiables" in page
+
+
+def test_low_coverage_explains_the_remedy():
+    stats = dict(STATS, coverage=0.47, unmeasured_seconds=2900)
+    page = render(stats, META)
+    assert "plus haut et plus reculé" in page
+    # Les totaux sont plancher, pas extrapolés : à dire explicitement.
+    assert "plancher" in page
+
+
+def test_report_without_coverage_still_renders():
+    """Les anciens fichiers de statistiques n'ont pas ce champ."""
+    page = render(STATS, META)
+    assert "du match analysé" not in page
+    assert "9.8" in page

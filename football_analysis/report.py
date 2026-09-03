@@ -87,6 +87,33 @@ def _players_block(players: list[dict]) -> str:
     )
 
 
+def _coverage_block(stats: dict) -> str:
+    """Part du match réellement mesurée.
+
+    Affichée avant les chiffres, pas après : un club doit savoir sur quelle
+    portion du match portent les statistiques avant de les lire.
+    """
+    coverage = stats.get("coverage")
+    if coverage is None:
+        return ""
+
+    unmeasured = stats.get("unmeasured_seconds", 0) / 60
+    state = "ok" if coverage >= 0.8 else "warn" if coverage >= 0.5 else "bad"
+    verdict = {
+        "ok": "Les statistiques individuelles sont fiables.",
+        "warn": "Distances et vitesses individuelles sont à prendre avec prudence.",
+        "bad": "Trop de temps non mesuré : ne pas se fier aux chiffres individuels.",
+    }[state]
+
+    return f"""<div class="cov cov--{state}">
+  <div class="cov__figure">{coverage:.0%}</div>
+  <div class="cov__text">
+    <strong>du match analysé</strong>
+    <span>{unmeasured:.0f} min sans repère de terrain exploitable. {verdict}</span>
+  </div>
+</div>"""
+
+
 def _caveats(stats: dict) -> list[str]:
     """Limites affichées au club, déduites des données elles-mêmes.
 
@@ -100,6 +127,14 @@ def _caveats(stats: dict) -> list[str]:
             "Le terrain n'a pas pu être localisé sur la vidéo : distances, vitesses "
             "et possession sont indisponibles. Cause la plus fréquente, une caméra "
             "placée trop bas pour voir les lignes du terrain."
+        )
+    coverage = stats.get("coverage")
+    if coverage is not None and coverage < 0.8:
+        notes.append(
+            f"Seules {coverage:.0%} des images ont pu être rattachées au terrain. "
+            "Les périodes non mesurées sont exclues des totaux plutôt qu'estimées : "
+            "les distances affichées sont donc plancher, jamais gonflées. Filmer "
+            "depuis un point plus haut et plus reculé améliore nettement ce taux."
         )
     if len(players) > 30:
         notes.append(
@@ -120,18 +155,24 @@ STYLE = """
   --ground:#f7f8f5; --surface:#ffffff; --ink:#151a16; --muted:#5f6b62;
   --line:#e2e6df; --line-soft:#eef1ec; --turf:#2f6d43;
   --note-bg:#fdf8ec; --note-line:#e8dcc0; --note-ink:#6b5522;
+  --ok-bg:#f1f7f2; --ok-line:#cfe3d5;
+  --bad-bg:#fcf2f1; --bad-line:#eccecb; --bad-ink:#8c3a30;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --ground:#101310; --surface:#191d18; --ink:#e6ebe4; --muted:#98a297;
     --line:#2b312a; --line-soft:#232821; --turf:#63a97a;
     --note-bg:#221d12; --note-line:#3d3524; --note-ink:#d9c79b;
+    --ok-bg:#16211a; --ok-line:#2c3f33;
+    --bad-bg:#241614; --bad-line:#422a26; --bad-ink:#e0a79e;
   }
 }
 :root[data-theme="dark"] {
   --ground:#101310; --surface:#191d18; --ink:#e6ebe4; --muted:#98a297;
   --line:#2b312a; --line-soft:#232821; --turf:#63a97a;
   --note-bg:#221d12; --note-line:#3d3524; --note-ink:#d9c79b;
+  --ok-bg:#16211a; --ok-line:#2c3f33;
+  --bad-bg:#241614; --bad-line:#422a26; --bad-ink:#e0a79e;
 }
 * { box-sizing:border-box; }
 body {
@@ -198,6 +239,20 @@ tbody tr:first-child td { border-top:none; }
 .notes ul { margin:0; padding-left:1.15rem; color:var(--note-ink); font-size:.9rem; }
 .notes li + li { margin-top:.55rem; }
 
+.cov { display:flex; align-items:center; gap:1.1rem; padding:1rem 1.25rem;
+       border-radius:6px; border:1px solid; }
+.cov__figure { font:600 2.4rem/1 "Barlow Condensed","Arial Narrow",sans-serif;
+               font-variant-numeric:tabular-nums; }
+.cov__text { display:flex; flex-direction:column; gap:.15rem; font-size:.88rem; }
+.cov__text strong { font-size:.95rem; }
+.cov__text span { color:var(--muted); }
+.cov--ok { background:var(--ok-bg); border-color:var(--ok-line); }
+.cov--ok .cov__figure { color:var(--turf); }
+.cov--warn { background:var(--note-bg); border-color:var(--note-line); }
+.cov--warn .cov__figure { color:var(--note-ink); }
+.cov--bad { background:var(--bad-bg); border-color:var(--bad-line); }
+.cov--bad .cov__figure { color:var(--bad-ink); }
+
 .empty { color:var(--muted); margin:0; font-size:.92rem; }
 footer { color:var(--muted); font-size:.78rem; padding:.5rem 0 2rem;
          border-top:1px solid var(--line); }
@@ -261,6 +316,7 @@ def render_body(stats: dict, meta: ReportMeta, radar_png: Path | None = None) ->
   <div class="meta">{html.escape(" · ".join(subtitle))}</div>
   {badge}
  </header>
+ {_coverage_block(stats)}
  <section><h2>Possession</h2>{_possession_block(stats.get("possession", {}))}</section>
  {radar}
  <section><h2>Joueurs</h2>{_players_block(stats.get("players", []))}</section>

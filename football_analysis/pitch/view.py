@@ -64,3 +64,41 @@ class SmoothedHomography:
     @property
     def ready(self) -> bool:
         return len(self._window) > 0
+
+
+class HomographyCache:
+    """Conserve la dernière homographie valide, et la périme.
+
+    Sans repères sur une frame, réutiliser la dernière homographie connue est
+    correct sur quelques secondes : la caméra a peu bougé. Sur un match réel,
+    des intervalles de plusieurs minutes sans aucun repère ont été mesurés
+    (voir ANALYSE_TERRAIN.md) — la caméra y panoramique et zoome plusieurs
+    fois. Une homographie de douze minutes projette alors n'importe où, sans
+    que rien ne le signale, et le pipeline produit des distances inventées.
+
+    Cette classe rend `None` passé le délai. L'appelant doit alors marquer la
+    frame comme non mesurée plutôt que de deviner.
+    """
+
+    def __init__(self, max_age_frames: int) -> None:
+        self.max_age_frames = max_age_frames
+        self._transformer: ViewTransformer | None = None
+        self._set_at: int | None = None
+
+    def update(self, transformer: ViewTransformer, frame_index: int) -> None:
+        self._transformer = transformer
+        self._set_at = frame_index
+
+    def get(self, frame_index: int) -> ViewTransformer | None:
+        """Homographie utilisable à cette frame, ou None si périmée."""
+        if self._transformer is None or self._set_at is None:
+            return None
+        if frame_index - self._set_at > self.max_age_frames:
+            return None
+        return self._transformer
+
+    def age(self, frame_index: int) -> int | None:
+        """Nombre de frames depuis la dernière homographie valide."""
+        if self._set_at is None:
+            return None
+        return frame_index - self._set_at
