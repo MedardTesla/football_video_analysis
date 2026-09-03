@@ -72,3 +72,45 @@ def test_frame_without_turf_does_not_crash():
     mask = playable_area(grey)
     assert mask.shape == (H, W)
     assert mask.sum() == 0
+
+
+def test_turf_hue_is_estimated_not_hardcoded():
+    """Le masque doit suivre la teinte réelle, pas un seuil figé.
+
+    Deux stades filmés à des heures différentes n'ont pas la même teinte de
+    gazon ; un seuil calé sur l'un dérive sur l'autre.
+    """
+    from football_analysis.pitch.mask import dominant_turf_hue
+
+    for bgr in [(60, 160, 70), (40, 120, 90), (35, 95, 45)]:
+        frame = np.full((H, W, 3), bgr, dtype=np.uint8)
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        # Référence calculée par OpenCV, pas posée à la main.
+        assert dominant_turf_hue(hsv) == int(hsv[0, 0, 0]), bgr
+
+
+def test_two_turf_shades_both_segment():
+    """Une pelouse claire et une pelouse sombre doivent toutes deux marcher."""
+    for bgr in [(60, 160, 70), (35, 95, 45)]:
+        frame = np.zeros((H, W, 3), dtype=np.uint8)
+        frame[:HORIZON] = (120, 120, 125)
+        frame[HORIZON:] = bgr
+        mask = playable_area(frame)
+        assert mask[350, 350] > 0, bgr
+        assert mask[40, 350] == 0, bgr
+
+
+def test_off_pitch_vegetation_is_excluded():
+    """Buissons hors terrain : même famille de couleur, teinte plus jaune.
+
+    Le vrai piège du terrain filmé : la végétation derrière la clôture est
+    verte elle aussi. Elle est séparée du gazon par un mur, et sa teinte
+    diffère d'une dizaine de degrés.
+    """
+    frame = np.zeros((H, W, 3), dtype=np.uint8)
+    frame[:80] = (60, 150, 150)      # végétation vert-jaune
+    frame[80:140] = (150, 150, 155)  # mur de séparation
+    frame[140:] = (60, 160, 70)      # pelouse
+    mask = playable_area(frame)
+    assert mask[300, 350] > 0    # pelouse retenue
+    assert mask[40, 350] == 0    # végétation écartée

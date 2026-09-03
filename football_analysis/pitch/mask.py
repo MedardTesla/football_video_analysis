@@ -16,10 +16,34 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-# Teinte du gazon en HSV OpenCV (H sur 0-179). La plage est large : le même
-# terrain passe du vert-jaune en plein soleil au vert sombre à l'ombre.
-TURF_LOWER = np.array([30, 40, 40], dtype=np.uint8)
-TURF_UPPER = np.array([90, 255, 255], dtype=np.uint8)
+# Bornes de recherche du gazon en HSV OpenCV (H sur 0-179), volontairement
+# larges : elles ne servent qu'à délimiter où chercher la teinte dominante.
+HUE_SEARCH = (25, 95)
+HUE_TOLERANCE = 12
+MIN_SATURATION = 50
+MIN_VALUE = 40
+
+
+def dominant_turf_hue(hsv: np.ndarray) -> int | None:
+    """Teinte dominante du gazon sur cette image.
+
+    Un seuil fixe ne survit pas au changement de stade, de saison ni d'heure :
+    la même pelouse passe du vert-jaune en plein soleil au vert sombre à
+    l'ombre, et la végétation hors terrain se distingue par une teinte plus
+    jaune de seulement une dizaine de degrés. Estimer le mode sur chaque image
+    rend le masque indépendant du lieu de tournage.
+    """
+    low, high = HUE_SEARCH
+    plausible = (
+        (hsv[:, :, 0] >= low)
+        & (hsv[:, :, 0] <= high)
+        & (hsv[:, :, 1] >= MIN_SATURATION)
+        & (hsv[:, :, 2] >= MIN_VALUE)
+    )
+    if plausible.sum() < hsv.shape[0] * hsv.shape[1] * 0.05:
+        return None
+    histogram = np.bincount(hsv[:, :, 0][plausible], minlength=180)
+    return int(np.argmax(histogram))
 
 
 def turf_mask(frame: np.ndarray, close_px: int = 25) -> np.ndarray:
@@ -31,11 +55,25 @@ def turf_mask(frame: np.ndarray, close_px: int = 25) -> np.ndarray:
     ne font pas partie du terrain.
     """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, TURF_LOWER, TURF_UPPER)
+    hue = dominant_turf_hue(hsv)
+    if hue is None:
+        return np.zeros(frame.shape[:2], dtype=np.uint8)
 
+    mask = cv2.inRange(
+        hsv,
+        np.array([max(hue - HUE_TOLERANCE, 0), MIN_SATURATION, MIN_VALUE], np.uint8),
+        np.array([min(hue + HUE_TOLERANCE, 179), 255, 255], np.uint8),
+    )
+
+    small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, small)
+
+    # Combler avant de choisir la composante : joueurs, lignes et ombres
+    # découpent sinon la pelouse en morceaux, et on n'en garderait qu'un.
+    # La tolérance de teinte, elle, empêche déjà de souder la végétation
+    # hors terrain, plus jaune d'une dizaine de degrés.
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (close_px, close_px))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
     count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     if count <= 1:
