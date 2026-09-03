@@ -140,6 +140,35 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
 - **Mosaic doit être à 0** à l'entraînement du modèle pose : cette augmentation colle
   plusieurs images ensemble et apprend au modèle à chercher plusieurs terrains.
 
+## Couche de livraison (`service/`)
+
+```
+jobs.py      états d'un match, stockage SQLite, réservation atomique
+storage.py   dépôt des vidéos, formats et taille acceptés
+worker.py    consomme la file, produit le rapport
+api.py       trois écrans : déposer, suivre, lire
+web/pages.py rendu serveur, palette et polices communes au rapport
+```
+
+Lancement : `uvicorn service.api:app` d'un côté, `python -m service.run_worker`
+de l'autre. Ils ne partagent que `FA_DATA_ROOT` — l'API tient sur une petite
+machine, le worker a besoin d'un GPU qu'on veut pouvoir éteindre.
+
+Décisions structurantes :
+
+- **Pas de comptes.** Le lien porte un jeton de 24 octets ; `authenticate`
+  compare avec `secrets.compare_digest`, un `==` laissant deviner le jeton
+  caractère par caractère au chronomètre. Un jeton faux et un match inexistant
+  renvoient le même 404 : les distinguer confirmerait qu'un match existe.
+- **`claim_next` est atomique** — `UPDATE ... WHERE state='queued'` — pour que
+  deux workers ne traitent pas le même match. Ne jamais s'en servir pour tester
+  si la file est vide : utiliser `pending_count`, sinon le job suivant reste
+  bloqué en « en cours ».
+- **La vidéo source est supprimée** dès le rapport produit : poste de stockage
+  dominant, et ce sont les images du club.
+- **Les erreurs sont traduites** par `worker._message_lisible`. Un club ne doit
+  jamais lire « CUDA out of memory » ni un chemin interne.
+
 ## Current state vs. README
 
 `README.md` (français) décrit le système visé — équipes, homographie, vitesses.

@@ -1,0 +1,134 @@
+"""Worker : traitement de la file.
+
+Le pipeline réel exige des poids absents du dépôt et un GPU ; il est remplacé
+par des doublures. Ce qui est testé ici, c'est l'enchaînement des états, le
+nettoyage, et la traduction des pannes en messages lisibles par un club.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from football_analysis.config import Config
+from service import worker
+from service.jobs import JobState, JobStore
+from service.storage import Storage
+
+
+@pytest.fixture
+def contexte(tmp_path):
+    store = JobStore(tmp_path / "jobs.db")
+    storage = Storage(tmp_path / "videos")
+    video = tmp_path / "source.mp4"
+    video.write_bytes(b"video" * 100)
+    job = store.create("US Valmont", "Valmont – Beaupré", str(video))
+    return store, storage, job, video
+
+
+def _pipeline_reussi(dossier: Path):
+    from football_analysis.pipeline import PipelineResult
+
+    def run(video_path, output_path, config, **kwargs):
+        stats = Path(output_path).with_suffix(".json")
+        stats.parent.mkdir(parents=True, exist_ok=True)
+        stats.write_text('{"coverage": 0.62, "possession": {"0": 0.55, "1": 0.45},'
+                         ' "players": [], "unmeasured_seconds": 2000}')
+        Path(output_path).write_bytes(b"video annotee")
+        return PipelineResult(
+            video_path=Path(output_path), stats_path=stats,
+            stats={"coverage": 0.62, "possession": {"0": 0.55, "1": 0.45},
+                   "players": [], "unmeasured_seconds": 2000},
+        )
+    return run
+
+
+def test_a_successful_run_produces_a_report(contexte, monkeypatch, tmp_path):
+    store, storage, job, video = contexte
+    monkeypatch.setattr(worker, "run", _pipeline_reussi(tmp_path))
+
+    worker.process(job.id, store, storage, Config())
+
+    fini = store.get(job.id)
+    assert fini.state is JobState.DONE
+    assert fini.progress == 1.0
+    assert Path(fini.report_path).exists()
+    assert "Valmont" in Path(fini.report_path).read_text(encoding="utf-8")
+
+
+def test_the_source_video_is_deleted_after_analysis(contexte, monkeypatch, tmp_path):
+    """Ce sont les images du club, pas les nôtres — et c'est le poste de
+    stockage dominant."""
+    store, storage, job, video = contexte
+    monkeypatch.setattr(worker, "run", _pipeline_reussi(tmp_path))
+
+    worker.process(job.id, store, storage, Config())
+    assert not video.exists()
+
+
+def test_the_coverage_reaches_the_report(contexte, monkeypatch, tmp_path):
+    store, storage, job, _ = contexte
+    monkeypatch.setattr(worker, "run", _pipeline_reussi(tmp_path))
+
+    worker.process(job.id, store, storage, Config())
+    page = Path(store.get(job.id).report_path).read_text(encoding="utf-8")
+    assert "62%" in page
+
+
+def test_a_missing_model_is_not_blamed_on_the_club(contexte, monkeypatch):
+    store, storage, job, _ = contexte
+
+    def echoue(*a, **k):
+        raise FileNotFoundError("poids introuvables : models/player_detection.pt")
+
+    monkeypatch.setattr(worker, "run", echoue)
+    worker.process(job.id, store, storage, Config())
+
+    fini = store.get(job.id)
+    assert fini.state is JobState.FAILED
+    assert "indisponible" in fini.error
+    assert "models/" not in fini.error      # pas de détail interne
+
+
+def test_an_unreadable_video_tells_the_club_what_to_do(contexte, monkeypatch):
+    store, storage, job, _ = contexte
+
+    def echoue(*a, **k):
+        raise FileNotFoundError("vidéo illisible : /data/source.mp4")
+
+    monkeypatch.setattr(worker, "run", echoue)
+    worker.process(job.id, store, storage, Config())
+    assert "déposer à nouveau" in store.get(job.id).error.lower()
+
+
+def test_an_unexpected_error_stays_vague_but_polite(contexte, monkeypatch):
+    store, storage, job, _ = contexte
+
+    def echoue(*a, **k):
+        raise RuntimeError("CUDA out of memory at 0x7f2a")
+
+    monkeypatch.setattr(worker, "run", echoue)
+    worker.process(job.id, store, storage, Config())
+
+    erreur = store.get(job.id).error
+    assert "CUDA" not in erreur
+    assert "0x7f2a" not in erreur
+
+
+def test_the_loop_drains_the_queue_then_stops(contexte, monkeypatch, tmp_path):
+    store, storage, _, _ = contexte
+    for i in range(3):
+        v = tmp_path / f"v{i}.mp4"; v.write_bytes(b"x")
+        store.create("Club", f"Match {i}", str(v))
+    monkeypatch.setattr(worker, "run", _pipeline_reussi(tmp_path))
+
+    worker.serve(store, storage, Config(), once=True)
+
+    assert store.pending_count() == 0
+    assert store.counts_by_state().get("processing") is None
+
+
+def test_the_loop_returns_on_an_empty_queue(tmp_path):
+    store = JobStore(tmp_path / "jobs.db")
+    storage = Storage(tmp_path / "videos")
+    worker.serve(store, storage, Config(), once=True)     # ne doit pas boucler
