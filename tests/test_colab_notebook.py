@@ -92,3 +92,56 @@ def test_confidence_thresholds_match_the_pipeline(code):
     cfg = PitchConfig()
     assert f"SEUIL = {cfg.confidence}" in code
     assert f"MINI = {cfg.min_keypoints}" in code
+
+
+DETECTION = NOTEBOOK.parent / "train_detection_colab.ipynb"
+
+
+@pytest.fixture(scope="module")
+def detection_cells():
+    nb = json.loads(DETECTION.read_text(encoding="utf-8"))
+    return [("".join(c["source"]), c["cell_type"]) for c in nb["cells"]]
+
+
+@pytest.fixture(scope="module")
+def detection_code(detection_cells):
+    return "\n".join(src for src, kind in detection_cells if kind == "code")
+
+
+def test_every_detection_cell_parses(detection_cells):
+    for src, kind in detection_cells:
+        if kind == "code" and not src.strip().startswith("%"):
+            ast.parse(src)
+
+
+def test_detection_class_order_matches_config(detection_code):
+    """Un ordre de classes divergent ferait compter les arbitres comme des
+    joueurs, sans aucune erreur visible."""
+    from football_analysis.config import BALL_ID, GOALKEEPER_ID, PLAYER_ID, REFEREE_ID
+
+    namespace: dict = {}
+    start = detection_code.index("ATTENDU = [")
+    exec(detection_code[start : detection_code.index("yaml_path = ")], namespace)
+    attendu = namespace["ATTENDU"]
+    assert attendu.index("ball") == BALL_ID
+    assert attendu.index("goalkeeper") == GOALKEEPER_ID
+    assert attendu.index("player") == PLAYER_ID
+    assert attendu.index("referee") == REFEREE_ID
+
+
+def test_detection_trains_at_the_pipeline_resolution(detection_code):
+    """Le ballon fait une douzaine de pixels : entraîner en 640 le supprime."""
+    from football_analysis.config import DetectionConfig
+
+    assert f"imgsz={DetectionConfig().imgsz}" in detection_code
+
+
+def test_detection_mosaic_is_enabled_unlike_pose(detection_code):
+    """Inverse du modèle de points clés : ici la mosaïque varie les contextes."""
+    assert "mosaic=1.0" in detection_code
+    assert "close_mosaic=10" in detection_code
+
+
+def test_detection_key_is_never_written_in_clear(detection_code):
+    assert "getpass" in detection_code
+    assert "api_key='" not in detection_code.replace(" ", "")

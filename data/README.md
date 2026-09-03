@@ -1,6 +1,19 @@
 # Modèles et données
 
-Rien de lourd n'est versionné (voir `.gitignore`). À placer manuellement :
+Rien de lourd n'est versionné (voir `.gitignore`). Les deux modèles s'obtiennent
+avec les notebooks Colab de `training/` — GPU gratuit, aucun matériel requis :
+
+| Modèle | Notebook | Durée |
+|---|---|---|
+| `pitch_keypoints.pt` | `train_keypoints_colab.ipynb` | 1 h 30 à 2 h 30 |
+| `player_detection.pt` | `train_detection_colab.ipynb` | 2 h à 3 h |
+
+Chacun contient un garde-fou qui arrête l'exécution si le dataset ne respecte
+plus la convention attendue — ordre des 32 points clés pour l'un, ordre des
+quatre classes pour l'autre. Ces deux divergences produiraient des modèles qui
+convergent normalement en étant inutilisables.
+
+À placer manuellement :
 
 ```
 models/player_detection.pt    # YOLOv8 — 4 classes : ball, goalkeeper, player, referee
