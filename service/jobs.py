@@ -40,6 +40,7 @@ class Job:
     state: JobState = JobState.QUEUED
     progress: float = 0.0
     error: str | None = None
+    attempts: int = 0
     stats: dict | None = None
     report_path: str | None = None
     video_output_path: str | None = None
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     video_path TEXT NOT NULL,
     state TEXT NOT NULL,
     progress REAL NOT NULL DEFAULT 0,
+    attempts INTEGER NOT NULL DEFAULT 0,
     error TEXT,
     stats TEXT,
     report_path TEXT,
@@ -83,6 +85,15 @@ class JobStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as db:
             db.executescript(SCHEMA)
+            self._migrate(db)
+
+    @staticmethod
+    def _migrate(db: sqlite3.Connection) -> None:
+        """Ajoute les colonnes absentes des bases créées par une version
+        antérieure. SQLite ne sait pas ajouter une colonne « si absente »."""
+        existantes = {r["name"] for r in db.execute("PRAGMA table_info(jobs)")}
+        if "attempts" not in existantes:
+            db.execute("ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=30)
@@ -142,14 +153,65 @@ class JobStore:
                 return None
             now = datetime.now(timezone.utc).isoformat()
             changed = db.execute(
-                "UPDATE jobs SET state = ?, updated_at = ? WHERE id = ? AND state = ?",
+                "UPDATE jobs SET state = ?, updated_at = ?, attempts = attempts + 1"
+                " WHERE id = ? AND state = ?",
                 (JobState.PROCESSING.value, now, row["id"], JobState.QUEUED.value),
             ).rowcount
         if changed == 0:
             return None
         job = self._to_job(row)
         job.state, job.updated_at = JobState.PROCESSING, now
+        job.attempts += 1
         return job
+
+    def heartbeat(self, job_id: str) -> None:
+        """Signale que le worker est toujours vivant sur ce match.
+
+        Sans ce battement, un match long serait considéré abandonné et repris
+        par un autre worker pendant que le premier travaille encore.
+        """
+        with self._connect() as db:
+            db.execute(
+                "UPDATE jobs SET updated_at = ? WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), job_id),
+            )
+
+    def reclaim_stale(self, timeout_seconds: float, max_attempts: int = 3) -> list[str]:
+        """Remet en file les matchs abandonnés par un worker mort.
+
+        Sans cela, une coupure de courant laisse un match en « en cours »
+        indéfiniment, et le club attend un rapport qui ne viendra jamais.
+
+        `max_attempts` protège d'un tout autre risque : un fichier qui fait
+        planter le worker serait repris à l'infini et bloquerait la file
+        derrière lui. Au-delà, le match est déclaré en échec.
+        """
+        limite = datetime.now(timezone.utc).timestamp() - timeout_seconds
+        repris: list[str] = []
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id, attempts, updated_at FROM jobs WHERE state = ?",
+                (JobState.PROCESSING.value,),
+            ).fetchall()
+            for row in rows:
+                if datetime.fromisoformat(row["updated_at"]).timestamp() > limite:
+                    continue
+                now = datetime.now(timezone.utc).isoformat()
+                if row["attempts"] >= max_attempts:
+                    db.execute(
+                        "UPDATE jobs SET state = ?, error = ?, updated_at = ? WHERE id = ?",
+                        (JobState.FAILED.value,
+                         "L'analyse a échoué à plusieurs reprises. "
+                         "Nous avons été prévenus et revenons vers vous.",
+                         now, row["id"]),
+                    )
+                else:
+                    db.execute(
+                        "UPDATE jobs SET state = ?, progress = 0, updated_at = ? WHERE id = ?",
+                        (JobState.QUEUED.value, now, row["id"]),
+                    )
+                    repris.append(row["id"])
+        return repris
 
     def update(self, job_id: str, **champs) -> None:
         if "stats" in champs and champs["stats"] is not None:
@@ -179,6 +241,22 @@ class JobStore:
                 (club, limit),
             ).fetchall()
         return [self._to_job(r) for r in rows]
+
+    def stale_count(self, timeout_seconds: float) -> int:
+        """Matchs en cours sans nouvelle depuis trop longtemps.
+
+        Remonté par la supervision : si ce compteur ne redescend pas, c'est
+        que le worker est mort et que personne ne reprend la file.
+        """
+        limite = datetime.now(timezone.utc).timestamp() - timeout_seconds
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT updated_at FROM jobs WHERE state = ?",
+                (JobState.PROCESSING.value,),
+            ).fetchall()
+        return sum(
+            1 for r in rows if datetime.fromisoformat(r["updated_at"]).timestamp() <= limite
+        )
 
     def counts_by_state(self) -> dict[str, int]:
         with self._connect() as db:

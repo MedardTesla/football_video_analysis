@@ -103,10 +103,20 @@ def video_annotee(job_id: str, token: str) -> FileResponse:
 
 
 @app.get("/sante")
-def sante() -> dict:
-    """Supervision : file d'attente et stockage occupé."""
-    return {
+def sante() -> JSONResponse:
+    """Supervision : file, matchs bloqués, stockage occupé.
+
+    `bloques` est le compteur à surveiller : s'il ne redescend pas, le worker
+    est mort et personne ne reprend la file. La réponse passe en 503 dans ce
+    cas, pour qu'une sonde externe le détecte sans lire le corps.
+    """
+    from .worker import STALE_SECONDS
+
+    bloques = store.stale_count(STALE_SECONDS)
+    corps = {
         "jobs": store.counts_by_state(),
         "en_attente": store.pending_count(),
+        "bloques": bloques,
         "stockage_go": round(storage.usage_bytes() / 1024**3, 2),
     }
+    return JSONResponse(corps, status_code=503 if bloques else 200)

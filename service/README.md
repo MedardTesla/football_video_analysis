@@ -29,6 +29,19 @@ stockage dominant, et ce sont les images du club.
 **Les messages d'erreur s'adressent à un club**, pas à un développeur : la
 trace complète va dans les logs.
 
+## Reprise après panne
+
+Un worker tué — coupure de courant, machine GPU rendue — laisse un match en
+« en cours ». Au démarrage et entre deux matchs, le worker remet en file ce qui
+n'a plus donné signe de vie depuis 15 minutes. Les écritures de progression
+servent de battement de cœur : un match qui avance n'est jamais repris.
+
+`attempts` plafonne les reprises à trois. Sans ce plafond, un fichier qui fait
+planter le worker serait relancé indéfiniment et bloquerait toute la file.
+
+Surveillance : `/sante` répond **503** si des matchs sont bloqués. Une sonde
+externe suffit alors à détecter un worker mort.
+
 ## Coût de traitement mesuré
 
 | Échantillonnage | Frames sur 90 min | T4 | A10G |

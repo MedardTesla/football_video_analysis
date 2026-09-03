@@ -251,3 +251,113 @@ def test_a_finished_analysis_stops_polling(client):
     job = api.store.list_for_club("US Valmont")[0]
     api.store.update(job.id, state=JobState.DONE, report_path="/tmp/r.html")
     assert "setInterval" not in tc.get(job.public_url).text
+
+
+# --- Reprise après panne -----------------------------------------------------
+
+def _vieillir(store, job_id, secondes):
+    """Fait comme si le job n'avait plus donné signe de vie depuis N secondes."""
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+
+    vieux = (datetime.now(timezone.utc) - timedelta(seconds=secondes)).isoformat()
+    db = sqlite3.connect(store.path)
+    db.execute("UPDATE jobs SET updated_at = ? WHERE id = ?", (vieux, job_id))
+    db.commit()
+    db.close()
+
+
+def test_a_job_abandoned_by_a_dead_worker_is_requeued(store):
+    """Sans cela, une coupure de courant laisse le club attendre un rapport
+    qui ne viendra jamais."""
+    job = store.create("Club", "Match", "/tmp/v.mp4")
+    store.claim_next()
+    _vieillir(store, job.id, 3600)
+
+    assert store.reclaim_stale(timeout_seconds=900) == [job.id]
+    assert store.get(job.id).state is JobState.QUEUED
+    assert store.get(job.id).progress == 0.0
+
+
+def test_a_job_still_alive_is_left_alone(store):
+    job = store.create("Club", "Match", "/tmp/v.mp4")
+    store.claim_next()
+    assert store.reclaim_stale(timeout_seconds=900) == []
+    assert store.get(job.id).state is JobState.PROCESSING
+
+
+def test_a_heartbeat_prevents_reclaiming(store):
+    """Un match long ne doit pas être repris pendant qu'il progresse."""
+    job = store.create("Club", "Match", "/tmp/v.mp4")
+    store.claim_next()
+    _vieillir(store, job.id, 3600)
+    store.heartbeat(job.id)
+    assert store.reclaim_stale(timeout_seconds=900) == []
+
+
+def test_a_job_that_keeps_killing_the_worker_is_given_up(store):
+    """Un fichier qui fait planter le worker serait repris à l'infini et
+    bloquerait toute la file derrière lui."""
+    job = store.create("Club", "Match", "/tmp/v.mp4")
+    for _ in range(3):
+        store.claim_next()
+        _vieillir(store, job.id, 3600)
+        store.reclaim_stale(timeout_seconds=900, max_attempts=3)
+
+    fini = store.get(job.id)
+    assert fini.state is JobState.FAILED
+    assert "plusieurs reprises" in fini.error
+    assert store.pending_count() == 0
+
+
+def test_attempts_are_counted_on_each_claim(store):
+    job = store.create("Club", "Match", "/tmp/v.mp4")
+    assert store.claim_next().attempts == 1
+    store.update(job.id, state=JobState.QUEUED)
+    assert store.claim_next().attempts == 2
+
+
+def test_an_older_database_gains_the_new_column(tmp_path):
+    """Les bases créées avant cette version n'ont pas la colonne attempts."""
+    import sqlite3
+
+    chemin = tmp_path / "ancienne.db"
+    db = sqlite3.connect(chemin)
+    db.executescript(
+        "CREATE TABLE jobs (id TEXT PRIMARY KEY, token TEXT NOT NULL,"
+        " club TEXT NOT NULL, match_name TEXT NOT NULL, video_path TEXT NOT NULL,"
+        " state TEXT NOT NULL, progress REAL NOT NULL DEFAULT 0, error TEXT,"
+        " stats TEXT, report_path TEXT, video_output_path TEXT,"
+        " created_at TEXT NOT NULL, updated_at TEXT NOT NULL);"
+    )
+    db.execute(
+        "INSERT INTO jobs VALUES ('a','t','Club','Match','/tmp/v.mp4','queued',"
+        "0,NULL,NULL,NULL,NULL,'2026-01-01T00:00:00+00:00','2026-01-01T00:00:00+00:00')"
+    )
+    db.commit()
+    db.close()
+
+    store = JobStore(chemin)
+    assert store.get("a").attempts == 0
+    assert store.claim_next().attempts == 1
+
+
+def test_health_flags_a_dead_worker(client):
+    """Si personne ne reprend la file, la sonde doit le voir sans lire le corps."""
+    tc, api = client
+    _deposer(tc)
+    job = api.store.list_for_club("US Valmont")[0]
+    api.store.claim_next()
+    _vieillir(api.store, job.id, 7200)
+
+    reponse = tc.get("/sante")
+    assert reponse.status_code == 503
+    assert reponse.json()["bloques"] == 1
+
+
+def test_health_is_green_when_the_queue_moves(client):
+    tc, _ = client
+    _deposer(tc)
+    reponse = tc.get("/sante")
+    assert reponse.status_code == 200
+    assert reponse.json()["bloques"] == 0

@@ -175,3 +175,30 @@ def test_tiny_progress_steps_do_not_hammer_the_database(contexte, monkeypatch, t
     # 500 appels, au plus une écriture par point de pourcentage.
     assert len(ecritures) <= 101, len(ecritures)
     assert ecritures == sorted(ecritures)
+
+
+def test_a_dead_workers_job_is_recovered_at_startup(contexte, monkeypatch, tmp_path):
+    """Le cas réel : coupure de courant pendant une analyse."""
+    from datetime import datetime, timedelta, timezone
+    import sqlite3
+
+    store, storage, job, _ = contexte
+    store.claim_next()                       # un worker l'avait pris
+    vieux = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    db = sqlite3.connect(store.path)
+    db.execute("UPDATE jobs SET updated_at = ? WHERE id = ?", (vieux, job.id))
+    db.commit(); db.close()
+
+    monkeypatch.setattr(worker, "run", _pipeline_reussi(tmp_path))
+    worker.serve(store, storage, Config(), once=True, stale_seconds=900)
+
+    assert store.get(job.id).state is JobState.DONE
+
+
+def test_a_live_job_is_not_stolen_by_a_second_worker(contexte, tmp_path):
+    """Deux workers en parallèle : le second ne doit pas reprendre un match
+    que le premier traite encore."""
+    store, storage, job, _ = contexte
+    store.claim_next()
+    worker.serve(store, storage, Config(), once=True, stale_seconds=900)
+    assert store.get(job.id).state is JobState.PROCESSING

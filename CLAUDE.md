@@ -175,6 +175,14 @@ Décisions structurantes :
   dominant, et ce sont les images du club.
 - **Les erreurs sont traduites** par `worker._message_lisible`. Un club ne doit
   jamais lire « CUDA out of memory » ni un chemin interne.
+- **Les matchs abandonnés sont repris.** Un worker tué laisse un match en « en
+  cours » pour toujours ; `reclaim_stale` le remet en file après 15 min sans
+  nouvelle. Les écritures de progression servent de battement de cœur, ce qui
+  évite de reprendre un match qui avance encore. `attempts` plafonne les
+  reprises : un fichier qui fait planter le worker bloquerait sinon la file
+  derrière lui indéfiniment.
+- **`/sante` répond 503 si des matchs sont bloqués**, pour qu'une sonde externe
+  détecte un worker mort sans lire le corps de la réponse.
 
 ## Current state vs. README
 

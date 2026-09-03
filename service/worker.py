@@ -38,6 +38,9 @@ def process(job_id: str, store: JobStore, storage: Storage, config: Config) -> N
         nonlocal dernier
         if fraction - dernier >= 0.01 or fraction >= 1.0:
             dernier = fraction
+            # Cette écriture fait aussi office de battement de cœur : elle
+            # rafraîchit updated_at, ce qui empêche `reclaim_stale` de
+            # considérer le match abandonné pendant qu'il progresse.
             store.update(job.id, progress=round(fraction, 3))
 
     try:
@@ -94,17 +97,33 @@ def _message_lisible(erreur: Exception) -> str:
     return "L'analyse a échoué. Nous avons été prévenus et revenons vers vous."
 
 
+# Un match sans nouvelle pendant ce délai est considéré abandonné. Large à
+# dessein : la phase de calibrage du classifieur d'équipes ne remonte aucune
+# progression et peut durer plusieurs minutes sur une longue vidéo.
+STALE_SECONDS = 15 * 60
+
+
 def serve(
     store: JobStore, storage: Storage, config: Config | None = None,
     poll_seconds: float = 5.0, once: bool = False,
+    stale_seconds: float = STALE_SECONDS,
 ) -> None:
     """Boucle de traitement. `once=True` vide la file puis rend la main."""
     config = config or Config()
+
+    # Au démarrage : récupérer ce qu'un worker mort a laissé en plan. C'est le
+    # cas normal après une coupure de courant ou un redémarrage de machine.
+    repris = store.reclaim_stale(stale_seconds)
+    if repris:
+        log.warning("%d match(s) repris après interruption : %s", len(repris), repris)
+
     while True:
         job = store.claim_next()
         if job is None:
             if once:
                 return
+            # Un worker mort pendant que celui-ci tourne : on récupère aussi.
+            store.reclaim_stale(stale_seconds)
             time.sleep(poll_seconds)
             continue
         process(job.id, store, storage, config)
