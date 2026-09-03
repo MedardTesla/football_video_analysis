@@ -21,9 +21,10 @@ import supervision as sv
 
 from .analytics.ball import BallTrajectory
 from .analytics.stats import MatchStats, nearest_player_team
-from .config import GOALKEEPER_ID, PLAYER_ID, REFEREE_ID, Config
+from .config import BALL_ID, GOALKEEPER_ID, PLAYER_ID, REFEREE_ID, Config
 from .detection.detector import Detector
 from .pitch.keypoints import PitchKeypointDetector, transformer_from_keypoints
+from .pitch.mask import on_pitch, playable_area
 from .pitch.view import ViewTransformer
 from .render import annotators
 from .teams.classifier import TeamClassifier, assign_goalkeeper
@@ -107,12 +108,25 @@ def run(
     last_transformer: ViewTransformer | None = None
     last_pitch_xy: np.ndarray | None = None
     last_teams: np.ndarray = np.empty(0, dtype=int)
+    turf: np.ndarray | None = None
 
     stats_path = output_path.with_suffix(".json")
 
     with video_io.video_sink(output_path, info) as write:
-        for frame, detections in detector.detect(video_io.frames(video_path)):
+        for frame_index, (frame, detections) in enumerate(
+            detector.detect(video_io.frames(video_path))
+        ):
             frame = frame.copy()
+
+            # Filtrer avant le suivi : une personne hors pelouse à qui on
+            # attribue un identifiant pollue ensuite toutes les statistiques.
+            if config.pitch.use_turf_mask:
+                if turf is None or frame_index % config.pitch.turf_mask_interval == 0:
+                    turf = playable_area(frame)
+                people_mask = detections.class_id == BALL_ID
+                people_mask |= on_pitch(turf, detections.xyxy)
+                detections = detections[people_mask]
+
             people, ball = tracker.update(detections, frame=frame)
 
             points, confidence = keypoint_detector.detect_one(frame)

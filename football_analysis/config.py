@@ -19,8 +19,9 @@ class DetectionConfig:
     """Détection joueurs / arbitres / gardiens / ballon."""
 
     weights: Path = MODELS_DIR / "player_detection.pt"
-    # 1280x1280 étiré depuis 1920x1080 : préserve la résolution du ballon,
-    # qui ne fait que quelques pixels en vue de diffusion.
+    # Suréchantillonnage volontaire : le ballon ne fait qu'une douzaine de
+    # pixels (mesuré à 13x12 px sur une source 720p, voir ANALYSE_TERRAIN.md).
+    # Descendre sous la largeur native de la source le fait disparaître.
     imgsz: int = 1280
     confidence: float = 0.3
     # NMS agnostique de classe : un même joueur détecté à la fois comme
@@ -65,6 +66,12 @@ class PitchConfig:
     min_keypoints: int = 6
     # Lissage de la matrice d'homographie sur fenêtre glissante.
     homography_window: int = 5
+    # Écarte les personnes hors pelouse : staff, remplaçants, spectateurs.
+    # Sur une caméra de bord de touche, ils représentent un tiers des
+    # détections. Le masque est recalculé tous les N frames, la caméra
+    # bougeant lentement devant une pelouse qui, elle, ne bouge pas.
+    use_turf_mask: bool = True
+    turf_mask_interval: int = 10
 
 
 @dataclass

@@ -20,12 +20,17 @@ WIDTH, HEIGHT, N_FRAMES = 640, 360, 12
 
 @pytest.fixture
 def video(tmp_path):
-    """Vidéo synthétique : deux joueurs qui se croisent, plus un ballon."""
+    """Vidéo synthétique : pelouse verte, deux joueurs qui se croisent.
+
+    Le fond doit être une vraie pelouse : le pipeline filtre les détections
+    hors gazon, donc un fond neutre ferait rejeter tous les joueurs — ce que
+    ce test a effectivement attrapé.
+    """
     path = tmp_path / "match.mp4"
     info = video_io.VideoInfo(width=WIDTH, height=HEIGHT, fps=25.0, total_frames=N_FRAMES)
     with video_io.video_sink(path, info) as write:
         for i in range(N_FRAMES):
-            frame = np.full((HEIGHT, WIDTH, 3), 60, dtype=np.uint8)
+            frame = np.full((HEIGHT, WIDTH, 3), (60, 160, 70), dtype=np.uint8)
             frame[100 + i : 140 + i, 100 + i : 120 + i] = (255, 0, 0)
             write(frame)
     return path
