@@ -22,6 +22,19 @@ class VideoInfo:
     fps: float
     total_frames: int
 
+    def resampled(self, stride: int) -> "VideoInfo":
+        """Mêmes dimensions, cadence divisée.
+
+        Sert à écrire la vidéo annotée : traitée une image sur `stride`, elle
+        doit être écrite à la cadence réduite pour se lire à la bonne vitesse.
+        """
+        return VideoInfo(
+            width=self.width,
+            height=self.height,
+            fps=self.fps / stride,
+            total_frames=self.total_frames // stride,
+        )
+
     @classmethod
     def from_path(cls, path: str | Path) -> "VideoInfo":
         cap = cv2.VideoCapture(str(path))

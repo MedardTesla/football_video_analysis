@@ -220,3 +220,34 @@ def test_health_reports_the_queue(client):
     sante = tc.get("/sante").json()
     assert sante["en_attente"] == 1
     assert sante["jobs"]["queued"] == 1
+
+
+def test_the_progress_bar_shows_during_analysis(client):
+    tc, api = client
+    _deposer(tc)
+    job = api.store.list_for_club("US Valmont")[0]
+    api.store.update(job.id, state=JobState.PROCESSING, progress=0.42)
+
+    page = tc.get(job.public_url).text
+    assert "42 % analysé" in page
+    assert "width:42%" in page
+
+
+def test_the_queued_page_has_no_progress_bar(client):
+    """Rien n'a encore commencé : afficher 0 % laisserait croire à un blocage."""
+    tc, api = client
+    _deposer(tc)
+    job = api.store.list_for_club("US Valmont")[0]
+    page = tc.get(job.public_url).text
+    # La classe existe dans la feuille de style ; c'est le balisage qui doit
+    # être absent.
+    assert 'class="jauge"' not in page
+    assert "En attente" in page
+
+
+def test_a_finished_analysis_stops_polling(client):
+    tc, api = client
+    _deposer(tc)
+    job = api.store.list_for_club("US Valmont")[0]
+    api.store.update(job.id, state=JobState.DONE, report_path="/tmp/r.html")
+    assert "setInterval" not in tc.get(job.public_url).text

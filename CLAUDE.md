@@ -80,6 +80,13 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
 
 - **Tout est en flux.** `video/io.py` expose des générateurs. Le prototype chargeait
   la vidéo entière en mémoire, ce qui plafonnait la durée traitable.
+- **Le pipeline sous-échantillonne** à `ProcessingConfig.sample_fps` (10 fps par
+  défaut). Mesuré : à 11 km parcourus par match, descendre de 25 à 5 fps ne
+  sous-estime la distance que de 0,3 %. Ce n'est pas la mesure qui fixe cette
+  cadence mais le suivi, qui a besoin de recouvrement entre images. Deux
+  conséquences faciles à manquer : la vidéo annotée s'écrit à la cadence réduite
+  pour se lire à la bonne vitesse, et `TrackingConfig.frame_rate` doit suivre —
+  sinon les pistes expirent `stride` fois trop tard.
 - **Le ballon ne passe pas par le traqueur.** Trop petit et trop rapide pour que
   l'IoU entre deux frames soit non nul. Sa position vient des détections brutes, filtrée
   par `BallTrajectory` dans l'espace terrain — c'est là qu'une contrainte physique

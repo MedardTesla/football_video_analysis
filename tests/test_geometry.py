@@ -110,3 +110,17 @@ def test_flip_index_matches_the_public_dataset():
         24, 25, 26, 27, 28, 29, 22, 23, 21, 17, 18, 19, 20, 13, 14, 15,
         16, 9, 10, 11, 12, 8, 6, 7, 0, 1, 2, 3, 4, 5, 31, 30,
     ]
+
+
+def test_sampling_stride_targets_the_requested_rate():
+    """Le sous-échantillonnage divise le coût GPU par cinq sans perdre
+    en précision : encore faut-il viser la bonne cadence."""
+    from football_analysis.pipeline import sampling_stride
+
+    assert sampling_stride(25.0, 10.0) == 2      # 12,5 fps effectifs
+    assert sampling_stride(50.0, 10.0) == 5      # 10 fps exactement
+    assert sampling_stride(30.0, 5.0) == 6
+    # Cadence cible au-dessus de la source : on ne peut pas inventer d'images.
+    assert sampling_stride(25.0, 50.0) == 1
+    assert sampling_stride(25.0, None) == 1
+    assert sampling_stride(25.0, 0) == 1

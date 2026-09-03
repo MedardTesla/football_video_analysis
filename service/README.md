@@ -42,3 +42,6 @@ match, passer de 25 à 5 fps sous-estime la distance de **0,3 %**. Ce n'est pas
 la mesure qui fixe la fréquence, c'est le suivi — il lui faut du recouvrement
 entre images consécutives pour conserver les identités. Le plancher pratique
 reste à déterminer une fois les modèles disponibles.
+
+Le pipeline échantillonne à 10 fps par défaut (`ProcessingConfig.sample_fps`),
+soit deux fois plus de marge que le seuil où la mesure souffrirait.

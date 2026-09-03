@@ -93,11 +93,45 @@ def stub_models(monkeypatch):
 
 
 def test_pipeline_writes_video_and_stats(video, tmp_path):
-    result = pipeline.run(video, tmp_path / "out.mp4", Config())
+    config = Config()
+    result = pipeline.run(video, tmp_path / "out.mp4", config)
 
     assert result.video_path.exists()
     assert result.stats_path.exists()
+
+    # La sortie est échantillonnée : une image sur `stride`, écrite à la
+    # cadence réduite pour se lire à la bonne vitesse.
+    stride = pipeline.sampling_stride(25.0, config.processing.sample_fps)
+    assert video_io.VideoInfo.from_path(result.video_path).total_frames == N_FRAMES // stride
+
+
+def test_every_frame_is_processed_when_sampling_is_off(video, tmp_path):
+    from dataclasses import replace
+
+    config = Config()
+    config.processing = replace(config.processing, sample_fps=None)
+    result = pipeline.run(video, tmp_path / "out.mp4", config)
     assert video_io.VideoInfo.from_path(result.video_path).total_frames == N_FRAMES
+
+
+def test_progress_is_reported_and_ends_at_one(video, tmp_path):
+    from dataclasses import replace
+
+    config = Config()
+    config.processing = replace(config.processing, progress_every=1)
+    vus = []
+    pipeline.run(video, tmp_path / "out.mp4", config, on_progress=vus.append)
+
+    assert vus, "aucune progression remontée"
+    assert vus[-1] == 1.0
+    assert all(0.0 <= v <= 1.0 for v in vus)
+    assert vus == sorted(vus), "la progression doit être monotone"
+
+
+def test_stats_record_the_sampling_used(video, tmp_path):
+    result = pipeline.run(video, tmp_path / "out.mp4", Config())
+    assert result.stats["source_fps"] == 25.0
+    assert result.stats["sampled_fps"] <= result.stats["source_fps"]
 
 
 def test_pipeline_tracks_both_players(video, tmp_path):

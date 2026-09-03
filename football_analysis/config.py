@@ -93,7 +93,29 @@ class BallConfig:
 
 
 @dataclass
+class ProcessingConfig:
+    """Fréquence de traitement, principal levier sur le coût GPU."""
+
+    # Images traitées par seconde de match. Traiter les 25 ou 50 images d'une
+    # seconde n'apporte presque rien : à 11 km parcourus par match, descendre
+    # de 25 à 5 fps ne sous-estime la distance que de 0,3 % (mesuré, voir
+    # service/README.md). Ce n'est donc pas la mesure qui fixe cette valeur
+    # mais le suivi, qui a besoin de recouvrement entre images consécutives
+    # pour conserver les identités.
+    #
+    # 10 fps est un compromis prudent : deux fois plus de marge que le seuil
+    # où la mesure commencerait à souffrir, et cinq fois moins de calcul qu'un
+    # traitement intégral. `None` traite toutes les images.
+    sample_fps: float | None = 10.0
+
+    # Fréquence des remontées de progression, en images. Écrire en base à
+    # chaque image saturerait SQLite pendant que l'API lit.
+    progress_every: int = 250
+
+
+@dataclass
 class Config:
+    processing: ProcessingConfig = field(default_factory=ProcessingConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     teams: TeamConfig = field(default_factory=TeamConfig)

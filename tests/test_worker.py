@@ -132,3 +132,46 @@ def test_the_loop_returns_on_an_empty_queue(tmp_path):
     store = JobStore(tmp_path / "jobs.db")
     storage = Storage(tmp_path / "videos")
     worker.serve(store, storage, Config(), once=True)     # ne doit pas boucler
+
+
+def test_progress_reaches_the_store(contexte, monkeypatch, tmp_path):
+    """La page de suivi n'affiche rien pendant une heure sans cela."""
+    store, storage, job, _ = contexte
+    reussi = _pipeline_reussi(tmp_path)
+
+    def run_avec_progression(video_path, output_path, config, on_progress=None, **k):
+        for f in (0.0, 0.25, 0.5, 0.75):
+            on_progress(f)
+        return reussi(video_path, output_path, config)
+
+    monkeypatch.setattr(worker, "run", run_avec_progression)
+    worker.process(job.id, store, storage, Config())
+    assert store.get(job.id).progress == 1.0
+
+
+def test_tiny_progress_steps_do_not_hammer_the_database(contexte, monkeypatch, tmp_path):
+    """Chaque écriture est une transaction que l'API doit traverser pour
+    afficher la page d'état. Un pas d'un millième ne mérite pas la sienne."""
+    store, storage, job, _ = contexte
+    reussi = _pipeline_reussi(tmp_path)
+    ecritures = []
+    original = store.update
+
+    def compter(job_id, **champs):
+        if "progress" in champs:
+            ecritures.append(champs["progress"])
+        return original(job_id, **champs)
+
+    monkeypatch.setattr(store, "update", compter)
+
+    def run_bavard(video_path, output_path, config, on_progress=None, **k):
+        for i in range(500):
+            on_progress(i / 500)
+        return reussi(video_path, output_path, config)
+
+    monkeypatch.setattr(worker, "run", run_bavard)
+    worker.process(job.id, store, storage, Config())
+
+    # 500 appels, au plus une écriture par point de pourcentage.
+    assert len(ecritures) <= 101, len(ecritures)
+    assert ecritures == sorted(ecritures)

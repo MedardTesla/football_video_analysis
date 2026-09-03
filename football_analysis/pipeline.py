@@ -12,8 +12,9 @@ basse, où le terrain est souvent partiellement hors champ.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -86,18 +87,33 @@ def fit_team_classifier(
     return classifier.fit(sample)
 
 
+def sampling_stride(source_fps: float, target_fps: float | None) -> int:
+    """Nombre d'images source à sauter entre deux images traitées."""
+    if not target_fps or target_fps >= source_fps:
+        return 1
+    return max(1, round(source_fps / target_fps))
+
+
 def run(
     video_path: str | Path,
     output_path: str | Path,
     config: Config | None = None,
     with_radar: bool = True,
+    on_progress: Callable[[float], None] | None = None,
 ) -> PipelineResult:
     config = config or Config()
     video_path, output_path = Path(video_path), Path(output_path)
 
-    info = video_io.VideoInfo.from_path(video_path)
+    source = video_io.VideoInfo.from_path(video_path)
+    stride = sampling_stride(source.fps, config.processing.sample_fps)
+    info = source.resampled(stride)
+
     detector = Detector(config.detection)
-    tracker = PersonTracker(config.tracking)
+    # Le suivi raisonne en secondes via frame_rate : lui passer la cadence
+    # source alors qu'on traite une image sur `stride` ferait expirer les
+    # pistes `stride` fois trop tard.
+    tracking = replace(config.tracking, frame_rate=max(1, round(info.fps)))
+    tracker = PersonTracker(tracking)
     classifier = fit_team_classifier(video_path, detector, config)
 
     keypoint_detector = PitchKeypointDetector(config.pitch)
@@ -115,10 +131,13 @@ def run(
 
     stats_path = output_path.with_suffix(".json")
 
+    total = info.total_frames or 0
     with video_io.video_sink(output_path, info) as write:
         for frame_index, (frame, detections) in enumerate(
-            detector.detect(video_io.frames(video_path))
+            detector.detect(video_io.frames(video_path, stride=stride))
         ):
+            if on_progress and total and frame_index % config.processing.progress_every == 0:
+                on_progress(min(frame_index / total, 0.99))
             frame = frame.copy()
 
             # Filtrer avant le suivi : une personne hors pelouse à qui on
@@ -224,7 +243,12 @@ def run(
 
             write(frame)
 
+    if on_progress:
+        on_progress(1.0)
+
     payload = stats.to_dict()
+    payload["sampled_fps"] = round(info.fps, 2)
+    payload["source_fps"] = round(source.fps, 2)
     stats_path.write_text(json.dumps(payload, indent=2))
 
     # Radar de la dernière frame exploitable : illustre le rapport.

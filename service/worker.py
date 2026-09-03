@@ -28,11 +28,24 @@ def process(job_id: str, store: JobStore, storage: Storage, config: Config) -> N
         return
 
     dossier = storage.job_dir(job.id)
+
+    # La progression n'est écrite que si elle a bougé d'un point : le pipeline
+    # peut rappeler souvent, et chaque écriture est une transaction que l'API
+    # doit pouvoir traverser pour afficher la page d'état.
+    dernier = 0.0
+
+    def progression(fraction: float) -> None:
+        nonlocal dernier
+        if fraction - dernier >= 0.01 or fraction >= 1.0:
+            dernier = fraction
+            store.update(job.id, progress=round(fraction, 3))
+
     try:
         resultat = run(
             job.video_path,
             dossier / "analyse.mp4",
             config,
+            on_progress=progression,
         )
         rapport = write_report(
             resultat.stats_path,

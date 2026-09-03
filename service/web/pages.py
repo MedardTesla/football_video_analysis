@@ -71,6 +71,10 @@ button:hover { filter:brightness(1.08); }
 .pastille--attente { background:var(--note-ink); }
 .pastille--echec { background:var(--bad-ink); }
 .etat strong { font-size:1.05rem; }
+.jauge { height:8px; border-radius:4px; background:var(--line); overflow:hidden; }
+.jauge span { display:block; height:100%; background:var(--turf); border-radius:4px;
+              transition:width .4s ease; }
+@media (prefers-reduced-motion:reduce) { .jauge span { transition:none; } }
 .note { background:var(--note-bg); border:1px solid var(--note-line);
         color:var(--note-ink); border-radius:6px; padding:.9rem 1.1rem;
         font-size:.88rem; }
@@ -178,7 +182,12 @@ def status_page(job: Job, en_attente: int) -> str:
         detail = f"<p class='erreur'>{html.escape(job.error or 'Cause inconnue.')}</p>"
         actions = '<div class="actions"><a class="secondaire" href="/">Déposer à nouveau</a></div>'
     elif job.state is JobState.PROCESSING:
-        detail = "<p class='lede'>Comptez environ une heure. Cette page se met à jour seule.</p>"
+        pourcent = int(job.progress * 100)
+        detail = (
+            f'<div class="jauge"><span style="width:{pourcent}%"></span></div>'
+            f"<p class='lede'>{pourcent} % analysé. Comptez environ une heure au total. "
+            "Cette page se met à jour seule.</p>"
+        )
         actions = ""
     else:
         detail = f"<p class='lede'>{_attente(en_attente)} Cette page se met à jour seule.</p>"
@@ -186,13 +195,23 @@ def status_page(job: Job, en_attente: int) -> str:
 
     # Le rafraîchissement s'arrête de lui-même une fois l'état terminal :
     # laisser tourner une requête toutes les dix secondes sur un rapport
-    # consulté longtemps n'apporterait rien.
+    # consulté longtemps n'apporterait rien. Tant que l'analyse tourne, la
+    # jauge est mise à jour sans recharger la page — recharger ferait
+    # clignoter l'écran toutes les dix secondes pendant une heure.
     script = "" if job.state.terminal else f"""
 <script>
+ const jauge = document.querySelector(".jauge span");
  setInterval(async () => {{
    try {{
      const r = await fetch("{job.public_url}/etat");
-     if (r.ok && (await r.json()).terminal) location.reload();
+     if (!r.ok) return;
+     const etat = await r.json();
+     if (etat.terminal) return location.reload();
+     if (jauge && etat.state === "processing") {{
+       jauge.style.width = Math.round(etat.progress * 100) + "%";
+     }} else if (!jauge && etat.state === "processing") {{
+       location.reload();   // passage de « en attente » à « en cours »
+     }}
    }} catch (e) {{ /* hors ligne : on réessaiera */ }}
  }}, 10000);
 </script>"""
