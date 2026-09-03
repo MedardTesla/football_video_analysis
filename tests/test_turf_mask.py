@@ -114,3 +114,20 @@ def test_off_pitch_vegetation_is_excluded():
     mask = playable_area(frame)
     assert mask[300, 350] > 0    # pelouse retenue
     assert mask[40, 350] == 0    # végétation écartée
+
+
+def test_hue_range_seen_in_real_matches_is_handled():
+    """Deux stades réels couvrent H = 41 à 63, soit 22° d'amplitude.
+
+    Mesuré sur ASKO x Barracuda (41-50) et Djoliba x ASKO (50-63). Aucune
+    borne fixe ne couvre les deux : c'est ce qui justifie l'estimation par
+    image. Ce test verrouille cette couverture.
+    """
+    for hue in (41, 50, 55, 63):
+        frame = np.zeros((H, W, 3), dtype=np.uint8)
+        frame[:HORIZON] = (120, 120, 125)
+        turf = np.full((1, 1, 3), (hue, 150, 160), dtype=np.uint8)
+        frame[HORIZON:] = cv2.cvtColor(turf, cv2.COLOR_HSV2BGR)[0, 0]
+        mask = playable_area(frame)
+        assert mask[350, 350] > 0, f"gazon H={hue} non détecté"
+        assert mask[40, 350] == 0, f"gradins inclus à tort pour H={hue}"

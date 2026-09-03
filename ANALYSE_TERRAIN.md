@@ -1,4 +1,7 @@
-# Phase 0 — Analyse d'une vidéo réelle
+# Phase 0 — Analyse de vidéos réelles
+
+Deux matchs, deux dispositifs de captation, **la même équipe** (ASKO joue dans
+les deux). L'écart entre les deux mesure donc la captation, pas le football.
 
 Source : ASKO vs AC Barracuda, D1 Lonato J23 (YouTube, `hwKSqtpk_a4`).
 Méthode : 5 images échantillonnées sur les 2 h du match (7', 25', 45', 70', 90'),
@@ -123,3 +126,51 @@ Deux façons d'améliorer le chiffre, par ordre de coût :
    Gratuit, et c'est le levier le plus puissant.
 2. Entraîner le modèle de points clés, qui reconnaît aussi des repères
    sémantiques qu'un détecteur de lignes ignore (point de penalty, arcs).
+
+
+---
+
+# Second match : DJOLIBA x ASKO (Ligue des Champions CAF)
+
+Source : YouTube `0d472EWLOf0`, 1920×1080 à 50 fps, 97 min. Caméra en tribune
+haute, plans larges, stade quasi vide, piste d'athlétisme autour du terrain.
+Même protocole : 36 images échantillonnées, même critère de jugement.
+
+## Comparaison
+
+| | ASKO x Barracuda | Djoliba x ASKO |
+|---|---|---|
+| Résolution | 1280×720 / 30 fps | **1920×1080 / 50 fps** |
+| Caméra | Bord de touche, hauteur d'homme | **Tribune haute** |
+| Frames exploitables | **47 %** (±8 %) | **≥ 92 %** (36/36, 0 échec) |
+| Plus longue série sans repère | ~12 min | aucune observée |
+| Personnes hors terrain écartées | ~33 % | 15 % |
+| Ballon détecté (YOLO générique) | 1/5 images | **7/10 images** |
+| Taille du ballon | 13×12 px | 12 à 19 px |
+| Hauteur médiane d'un joueur | 96 à 137 px | 84 à 135 px |
+
+Le taux de 92 % est une borne basse : avec zéro échec sur 36 tirages, la règle
+de trois plafonne le taux d'échec à 3/36 ≈ 8 %.
+
+## Ce que cette comparaison démontre
+
+**La captation est le levier dominant, et de loin.** Même équipe, même
+championnat, même code d'analyse sans une ligne modifiée : la disponibilité de
+l'homographie passe de 47 % à plus de 92 % uniquement en changeant la position
+de la caméra et la résolution.
+
+Aucun modèle, aucun réentraînement, aucune optimisation ne rattrapera cet
+écart. Un cahier des charges de captation vaut plus que des mois d'ingénierie :
+
+- caméra en hauteur, au-dessus du niveau du terrain ;
+- plan large, montrant au moins un tiers du terrain ;
+- 1080p minimum — à 720p le ballon disparaît ;
+- caméra reculée, sans banc ni abri dans le champ.
+
+## Validation du masque adaptatif
+
+La teinte du gazon mesurée couvre **H = 41 à 63** sur les deux matchs, soit 22
+degrés d'amplitude. Aucune borne fixe ne couvre les deux stades : le choix
+d'estimer la teinte dominante sur chaque image, pris sur le premier match, est
+directement validé par le second. Le masque a fonctionné sans réglage sur une
+pelouse à bandes de tonte, un stade vide et une piste d'athlétisme.

@@ -55,8 +55,11 @@ clubs filmant eux-mêmes, c'est simple, mais le contrat doit le dire.
 
 ## Ordre de travail proposé
 
-- **Phase 0 — valider le besoin.** Obtenir 2-3 vidéos réelles de clubs cibles. Faire
-  tourner la détection dessus. Cela conditionne tout le reste.
+- ~~**Phase 0 — valider le besoin**~~ : fait sur deux matchs, voir
+  `ANALYSE_TERRAIN.md`. Résultat déterminant : la disponibilité de l'homographie
+  passe de 47 % à plus de 92 % selon la seule captation, à code identique.
+  **Écrire un cahier des charges de captation avant tout autre travail** — c'est
+  le levier le plus rentable du projet.
 - **Phase 1 — pipeline bout en bout** sur une vidéo, sortie = vidéo annotée + radar.
 - **Phase 2 — entraîner le modèle de keypoints terrain** (YOLOv8x-pose, mosaic à 0 :
   l'augmentation mosaic colle plusieurs terrains sur une image et apprend au modèle à
