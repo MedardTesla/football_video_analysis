@@ -80,6 +80,14 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
 - **Le classifieur d'équipes s'ajuste une seule fois** sur un échantillon de frames
   du début de match. Réajuster UMAP par frame donne des clusters qui permutent d'une
   frame à l'autre.
+- **K-Means tourne avec `n_teams + 1` clusters.** Les deux plus peuplés sont les
+  équipes, le reste est `UNASSIGNED`. Sans ce cluster supplémentaire, les arbitres
+  sont assignés de force à une équipe — vérifié sur match réel. Un rejet par
+  distance au centroïde a été essayé avant et n'écartait rien : présents à
+  l'ajustement, les arbitres tombent dans la dispersion normale.
+- **`UNASSIGNED` vaut -1, ne jamais l'utiliser comme index.** `-1 % 2` vaut 1 en
+  Python : un joueur non attribué serait peint aux couleurs de l'équipe B. Passer
+  par `annotators.team_color`.
 - **L'ordre des 32 keypoints** de `pitch/geometry.py` est le contrat avec les poids
   YOLOv8-pose. Le modifier invalide tout modèle déjà entraîné.
 - **Le détecteur est derrière un protocole** (`detection/base.py`). Ultralytics est

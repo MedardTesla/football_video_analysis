@@ -27,7 +27,7 @@ from .pitch.keypoints import PitchKeypointDetector, transformer_from_keypoints
 from .pitch.mask import on_pitch, playable_area
 from .pitch.view import HomographyCache
 from .render import annotators
-from .teams.classifier import TeamClassifier, assign_goalkeeper
+from .teams.classifier import UNASSIGNED, TeamClassifier, assign_goalkeeper
 from .tracking.tracker import PersonTracker, ball_position
 from .video import io as video_io
 
@@ -81,6 +81,7 @@ def fit_team_classifier(
         batch_size=config.teams.embedding_batch_size,
         n_components=config.teams.umap_components,
         n_teams=config.teams.n_teams,
+        extra_clusters=config.teams.extra_clusters,
     )
     return classifier.fit(sample)
 
@@ -167,7 +168,9 @@ def run(
             if transformer is not None and len(pitch_xy) == len(teams) and len(pitch_xy):
                 last_pitch_xy, last_teams = pitch_xy, teams
                 for track_id, xy, team in zip(players.tracker_id, pitch_xy, teams):
-                    stats.update_player(int(track_id), xy, int(team))
+                    stats.update_player(
+                        int(track_id), xy, None if team == UNASSIGNED else int(team)
+                    )
 
                 ball_xy = ball_position(ball)
                 ball_pitch = (
@@ -177,24 +180,30 @@ def run(
                     if ball_xy is not None
                     else ball_trajectory.update(None)
                 )
-                stats.update_possession(
-                    nearest_player_team(ball_pitch, pitch_xy, teams)
+                # Les joueurs non attribués ne peuvent pas donner la
+                # possession à une équipe : on les retire du calcul.
+                known = teams != UNASSIGNED
+                possession_team = (
+                    nearest_player_team(ball_pitch, pitch_xy[known], teams[known])
+                    if known.any()
+                    else None
                 )
+                stats.update_possession(possession_team)
 
             # Rendu.
             for bbox, track_id, team in zip(players.xyxy, players.tracker_id, teams):
                 annotators.draw_ellipse(
-                    frame, bbox, annotators.TEAM_COLORS[int(team) % 2], str(track_id)
+                    frame, bbox, annotators.team_color(int(team)), str(track_id)
                 )
             for bbox, track_id in zip(keepers.xyxy, keepers.tracker_id):
-                team = 0
+                team = UNASSIGNED
                 if len(pitch_xy) and transformer is not None:
                     keeper_xy = transformer.frame_to_pitch(
                         _ground_points(keepers[:1])
                     )[0]
                     team = assign_goalkeeper(keeper_xy, pitch_xy, teams)
                 annotators.draw_ellipse(
-                    frame, bbox, annotators.TEAM_COLORS[team], str(track_id)
+                    frame, bbox, annotators.team_color(team), str(track_id)
                 )
             for bbox, track_id in zip(referees.xyxy, referees.tracker_id):
                 annotators.draw_ellipse(
@@ -205,11 +214,11 @@ def run(
 
             if with_radar and transformer is not None and len(pitch_xy):
                 radar = annotators.draw_pitch()
-                for team_id in (0, 1):
+                for team_id in (0, 1, UNASSIGNED):
                     annotators.draw_on_pitch(
                         radar,
                         pitch_xy[teams == team_id],
-                        annotators.TEAM_COLORS[team_id],
+                        annotators.team_color(team_id),
                     )
                 annotators.overlay_radar(frame, radar)
 
@@ -222,9 +231,9 @@ def run(
     radar_path = None
     if last_pitch_xy is not None and len(last_pitch_xy):
         radar = annotators.draw_pitch()
-        for team_id in (0, 1):
+        for team_id in (0, 1, UNASSIGNED):
             annotators.draw_on_pitch(
-                radar, last_pitch_xy[last_teams == team_id], annotators.TEAM_COLORS[team_id]
+                radar, last_pitch_xy[last_teams == team_id], annotators.team_color(team_id)
             )
         radar_path = output_path.with_name(f"{output_path.stem}_radar.png")
         cv2.imwrite(str(radar_path), radar)

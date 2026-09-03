@@ -174,3 +174,57 @@ degrés d'amplitude. Aucune borne fixe ne couvre les deux stades : le choix
 d'estimer la teinte dominante sur chaque image, pris sur le premier match, est
 directement validé par le second. Le masque a fonctionné sans réglage sur une
 pelouse à bandes de tonte, un stade vide et une piste d'athlétisme.
+
+
+---
+
+# Première exécution réelle du classifieur d'équipes
+
+507 vignettes de joueurs extraites du match Djoliba x ASKO (40 instants sur 8
+minutes), passées dans SigLIP + UMAP + K-Means. Premier passage du composant
+sur de vraies images.
+
+## Deux bugs, trouvés en exécutant
+
+1. `AutoProcessor` charge le tokenizer de SigLIP, qui exige SentencePiece et
+   échoue à l'import. On n'utilise que le volet image : `AutoImageProcessor`
+   suffit.
+2. `get_image_features` renvoie un objet de sortie en transformers 5, pas un
+   tenseur. L'embedding 768-D est dans `pooler_output`.
+
+Aucun des deux n'était détectable sans exécuter le code.
+
+## Le défaut de conception
+
+Avec deux clusters, les arbitres en turquoise atterrissaient dans le cluster de
+l'équipe en rouge — environ une vignette sur cinq de ce groupe. K-Means ne sait
+pas dire « ni l'un ni l'autre ».
+
+Première parade, **échouée** : rejeter les points trop éloignés des centroïdes.
+Sur les 507 vignettes, le seuil retenu en écartait exactement zéro. Les
+arbitres étant présents à l'ajustement, UMAP les place dans la dispersion
+normale du nuage.
+
+Parade retenue : regrouper en trois clusters, garder les deux plus peuplés
+comme équipes. Résultat mesuré :
+
+| | k=2 | k=3, deux plus gros |
+|---|---|---|
+| Équipe A | 302 (60 %) | 202 (40 %) |
+| Équipe B | 205 (40 %) | 195 (38 %) |
+| Non attribué | 0 | **110 (22 %)** |
+
+Le troisième groupe contient les arbitres, les gardiens en violet et bleu, et
+des vignettes trop floues pour être jugées. Contrôle visuel des deux groupes
+d'équipe : 24 vignettes sur 24 du bon maillot, aucun arbitre.
+
+Les 22 % écartés incluent de vrais joueurs sur images floues. C'est le prix
+assumé : perdre une détection douteuse coûte moins cher que d'attribuer un
+arbitre à une équipe.
+
+## Coût de calcul mesuré
+
+Sur CPU (8 cœurs), SigLIP base traite **3,2 vignettes par seconde**. Avec une
+vingtaine de joueurs par frame, cela fait ~6 s de classification par frame.
+Un match complet est hors de portée sans GPU — ce n'est pas une optimisation
+à faire plus tard, c'est une condition d'exécution.

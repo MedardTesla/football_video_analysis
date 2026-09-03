@@ -49,6 +49,9 @@ class TeamConfig:
     embedding_batch_size: int = 32
     umap_components: int = 3
     n_teams: int = 2
+    # Cluster supplémentaire pour absorber arbitres et gardiens : sans lui,
+    # ils sont assignés de force à une équipe. Voir teams/classifier.py.
+    extra_clusters: int = 1
     # Nombre de frames échantillonnées pour ajuster le classifieur une fois
     # pour toutes en début de match.
     fit_stride: int = 30

@@ -11,6 +11,17 @@ from ..pitch.geometry import PITCH
 TEAM_COLORS = ((255, 128, 0), (0, 128, 255))   # bleu, orange
 REFEREE_COLOR = (0, 255, 255)
 BALL_COLOR = (255, 255, 255)
+UNASSIGNED_COLOR = (170, 170, 170)
+
+
+def team_color(team: int) -> tuple[int, int, int]:
+    """Couleur d'une équipe, ou gris si non attribuée.
+
+    Indexer TEAM_COLORS directement serait piégeux : en Python, -1 % 2 vaut 1,
+    donc un joueur non attribué serait peint aux couleurs de l'équipe B sans
+    que rien ne le signale.
+    """
+    return TEAM_COLORS[team] if team in (0, 1) else UNASSIGNED_COLOR
 
 
 def draw_ellipse(
