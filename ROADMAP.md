@@ -62,9 +62,10 @@ clubs filmant eux-mêmes, c'est simple, mais le contrat doit le dire.
   **Écrire un cahier des charges de captation avant tout autre travail** — c'est
   le levier le plus rentable du projet.
 - **Phase 1 — pipeline bout en bout** sur une vidéo, sortie = vidéo annotée + radar.
-- **Phase 2 — entraîner le modèle de keypoints terrain** (YOLOv8x-pose, mosaic à 0 :
-  l'augmentation mosaic colle plusieurs terrains sur une image et apprend au modèle à
-  en chercher plusieurs).
+- **Phase 2 — entraîner le modèle de keypoints terrain** : notebook prêt à lancer,
+  `training/train_keypoints_colab.ipynb`. Dataset vérifié (CC BY 4.0, ordre des
+  points conforme), garde-fous en place, test d'acceptation en centimètres.
+  Ne peut pas tourner en local : pas de GPU.
 - ~~**Phase 3 — rapport livrable**~~ : fait (`report.py`), imprimable et lisible
   hors ligne. Démo : https://claude.ai/code/artifact/13840721-26c5-4d07-a58f-1d28977428ed
 - **Phase 4 — industrialisation** : file d'attente, stockage, facturation.

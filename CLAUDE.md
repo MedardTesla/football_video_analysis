@@ -35,6 +35,17 @@ python -m training.train_keypoints --write-config datasets/pitch   # génère da
 python -m training.train_keypoints --data datasets/pitch/data.yaml
 ```
 
+Pour le modèle de points clés, `training/train_keypoints_colab.ipynb` fait tout sur
+GPU gratuit : téléchargement du dataset, vérification de l'ordre des points, correction
+des chemins du `data.yaml` livré par Roboflow (ses chemins relatifs ne se résolvent pas
+sous Ultralytics), entraînement, puis un test d'acceptation exprimé en centimètres
+d'erreur au sol plutôt qu'en mAP.
+
+Le notebook **duplique** la géométrie du terrain, Colab n'ayant pas le dépôt.
+`tests/test_colab_notebook.py` vérifie que cette copie n'a pas dérivé de
+`pitch/geometry.py` — une divergence donnerait un modèle entraîné contre une autre
+géométrie, sans erreur visible.
+
 Le notebook historique `training/footbal_training_yolo_v5.ipynb` pulls the Roboflow `football-players-detection-3zvbc` dataset,
 then `shutil.move`s `train/`, `valid/`, `test/` one level deeper — which is why the repo has the doubled
 `training/football-players-detection-1/football-players-detection-1/` path. That layout is what makes the
