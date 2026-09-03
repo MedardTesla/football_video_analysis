@@ -27,9 +27,15 @@ les évitent par des doublures, mais le pipeline réel en a besoin
 
 Create these directories (and supply the video + weights) before running, or `main.py` fails.
 
-### Training
+### Entraînement
 
-`training/footbal_training_yolo_v5.ipynb` pulls the Roboflow `football-players-detection-3zvbc` dataset,
+```bash
+python -m training.train_detection --data datasets/players/data.yaml
+python -m training.train_keypoints --write-config datasets/pitch   # génère data.yaml
+python -m training.train_keypoints --data datasets/pitch/data.yaml
+```
+
+Le notebook historique `training/footbal_training_yolo_v5.ipynb` pulls the Roboflow `football-players-detection-3zvbc` dataset,
 then `shutil.move`s `train/`, `valid/`, `test/` one level deeper — which is why the repo has the doubled
 `training/football-players-detection-1/football-players-detection-1/` path. That layout is what makes the
 relative paths in `data.yaml` resolve; don't "flatten" it. Training runs via
@@ -49,6 +55,7 @@ video/io.py            lecture/écriture en flux (générateurs, pas de liste de
 detection/detector.py  YOLOv8 + NMS agnostique de classe, par lots
 tracking/tracker.py    BoT-SORT (paquet `trackers`) ; le ballon en est exclu
 analytics/stats.py     distance, vitesse, possession -> JSON
+report.py              rapport HTML remis au club (le livrable réel)
 pipeline.py            orchestration bout en bout
 cli.py                 point d'entrée
 teams/classifier.py    SigLIP (768-D) -> UMAP (3-D) -> K-Means (2 clusters)
@@ -85,6 +92,14 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
   la dernière homographie valide ; sans homographie du tout, la frame est annotée
   mais n'alimente ni le radar ni les statistiques spatiales. C'est le cas normal en
   caméra basse, pas une erreur.
+- **`flip_index` est calculé, pas écrit à la main.** YOLO-pose a besoin de
+  `flip_idx` pour l'augmentation `fliplr` : sans lui, l'image est mirorée mais pas
+  les labels, et le coin haut gauche garde l'indice du coin haut droit. Panne
+  silencieuse — l'entraînement converge quand même. `tests/test_training_config.py`
+  vérifie la cohérence entre le data.yaml et la géométrie.
+- **Le rapport ne cache pas ses angles morts.** `report._caveats` déduit des données
+  elles-mêmes ce qui doit être signalé au club (terrain non localisé, identités
+  fragmentées). Un club qui repère seul une incohérence perd confiance dans le reste.
 - **Mosaic doit être à 0** à l'entraînement du modèle pose : cette augmentation colle
   plusieurs images ensemble et apprend au modèle à chercher plusieurs terrains.
 

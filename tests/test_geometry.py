@@ -53,3 +53,21 @@ def test_smoothing_averages_matrices():
     result = smoother.update(ViewTransformer(source=square, target=square))
     assert smoother.ready
     assert np.allclose(result, np.eye(3), atol=1e-6)
+
+
+def test_flip_index_is_a_complete_involution():
+    """Une table de symétrie fausse casse l'augmentation fliplr en silence."""
+    flip = PITCH.flip_index
+    assert len(flip) == 32
+    assert sorted(flip) == list(range(32))
+    for i, mirrored in enumerate(flip):
+        assert flip[mirrored] == i
+
+
+def test_flip_index_mirrors_coordinates():
+    vertices = PITCH.vertices
+    for i, mirrored in enumerate(PITCH.flip_index):
+        x, y = vertices[i]
+        mx, my = vertices[mirrored]
+        assert mx == PITCH.length - x
+        assert my == y

@@ -15,6 +15,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+import cv2
 import numpy as np
 import supervision as sv
 
@@ -35,6 +36,7 @@ class PipelineResult:
     video_path: Path
     stats_path: Path
     stats: dict
+    radar_path: Path | None = None
 
 
 def _crops(frame: np.ndarray, detections: sv.Detections) -> list[np.ndarray]:
@@ -103,6 +105,8 @@ def run(
     )
     stats = MatchStats(fps=info.fps)
     last_transformer: ViewTransformer | None = None
+    last_pitch_xy: np.ndarray | None = None
+    last_teams: np.ndarray = np.empty(0, dtype=int)
 
     stats_path = output_path.with_suffix(".json")
 
@@ -136,6 +140,7 @@ def run(
 
             # Statistiques : seulement si la projection terrain est disponible.
             if len(pitch_xy) == len(teams) and len(pitch_xy):
+                last_pitch_xy, last_teams = pitch_xy, teams
                 for track_id, xy, team in zip(players.tracker_id, pitch_xy, teams):
                     stats.update_player(int(track_id), xy, int(team))
 
@@ -187,4 +192,21 @@ def run(
 
     payload = stats.to_dict()
     stats_path.write_text(json.dumps(payload, indent=2))
-    return PipelineResult(video_path=output_path, stats_path=stats_path, stats=payload)
+
+    # Radar de la dernière frame exploitable : illustre le rapport.
+    radar_path = None
+    if last_pitch_xy is not None and len(last_pitch_xy):
+        radar = annotators.draw_pitch()
+        for team_id in (0, 1):
+            annotators.draw_on_pitch(
+                radar, last_pitch_xy[last_teams == team_id], annotators.TEAM_COLORS[team_id]
+            )
+        radar_path = output_path.with_name(f"{output_path.stem}_radar.png")
+        cv2.imwrite(str(radar_path), radar)
+
+    return PipelineResult(
+        video_path=output_path,
+        stats_path=stats_path,
+        stats=payload,
+        radar_path=radar_path,
+    )

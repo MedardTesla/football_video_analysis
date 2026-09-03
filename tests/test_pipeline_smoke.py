@@ -120,3 +120,19 @@ def test_players_stay_inside_pitch_bounds(video, tmp_path):
 def test_runs_without_radar(video, tmp_path):
     result = pipeline.run(video, tmp_path / "out.mp4", Config(), with_radar=False)
     assert result.video_path.exists()
+
+
+def test_pipeline_exports_radar_image(video, tmp_path):
+    result = pipeline.run(video, tmp_path / "out.mp4", Config())
+    assert result.radar_path is not None
+    assert result.radar_path.exists()
+
+
+def test_cli_produces_report(video, tmp_path, monkeypatch):
+    from football_analysis import cli
+
+    output = tmp_path / "out.mp4"
+    assert cli.main([str(video), "-o", str(output), "--match-name", "US Test"]) == 0
+    report = output.with_suffix(".html")
+    assert report.exists()
+    assert "US Test" in report.read_text(encoding="utf-8")

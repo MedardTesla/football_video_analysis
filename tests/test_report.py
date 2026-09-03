@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import json
+import re
+from datetime import date
+
+import pytest
+
+from football_analysis.report import ReportMeta, render, write
+
+META = ReportMeta(match_name="US Exemple – AS Test", played_on=date(2026, 9, 3), duration_s=2700)
+
+STATS = {
+    "possession": {"0": 0.58, "1": 0.42},
+    "players": [
+        {"track_id": 4, "team": 0, "distance_m": 9812.4, "top_speed_ms": 8.3, "seconds_seen": 2650},
+        {"track_id": 9, "team": 1, "distance_m": 8730.1, "top_speed_ms": 9.1, "seconds_seen": 2600},
+    ],
+}
+
+
+def test_report_contains_key_figures():
+    page = render(STATS, META)
+    assert "US Exemple" in page
+    assert "58%" in page and "42%" in page
+    assert "9.8" in page  # 9812 m affichés en km
+
+
+def test_report_escapes_club_names():
+    """Les noms de clubs viennent d'une saisie utilisateur."""
+    page = render(STATS, ReportMeta(match_name="<script>alert(1)</script>"))
+    assert "<script>alert(1)</script>" not in page
+    assert "&lt;script&gt;" in page
+
+
+def test_report_survives_empty_analysis():
+    page = render({"possession": {}, "players": []}, META)
+    assert "non calculable" in page
+    assert "Aucun joueur suivi" in page
+
+
+def test_missing_pitch_is_flagged_to_the_club():
+    page = render({"possession": {}, "players": []}, META)
+    assert "caméra placée trop bas" in page
+
+
+def test_identity_fragmentation_is_flagged():
+    stats = {
+        "possession": {"0": 0.5, "1": 0.5},
+        "players": [
+            {"track_id": i, "team": i % 2, "distance_m": 100.0,
+             "top_speed_ms": 5.0, "seconds_seen": 2000}
+            for i in range(40)
+        ],
+    }
+    assert "40 identités pour 22 joueurs" in render(stats, META)
+
+
+def test_players_without_team_do_not_crash():
+    stats = {"possession": {}, "players": [
+        {"track_id": 1, "team": None, "distance_m": 10.0,
+         "top_speed_ms": 1.0, "seconds_seen": 90}
+    ]}
+    assert "Non attribué" in render(stats, META)
+
+
+def test_write_produces_a_single_file(tmp_path):
+    stats_path = tmp_path / "stats.json"
+    stats_path.write_text(json.dumps(STATS))
+    output = write(stats_path, tmp_path / "report.html", META)
+    page = output.read_text(encoding="utf-8")
+    assert output.exists()
+    assert page.lstrip().startswith("<!doctype html>")
+
+
+def test_only_fonts_are_fetched_from_the_network(tmp_path):
+    """Le rapport doit rester lisible hors ligne.
+
+    Les polices web sont la seule ressource distante tolérée : elles
+    dégradent sur la pile de repli. Toute autre ressource externe (image,
+    script, CSS) rendrait le rapport cassé sans connexion.
+    """
+    page = render(STATS, META)
+    urls = re.findall(r'https?://[^"\s]+', page)
+    assert urls, "polices attendues"
+    for url in urls:
+        assert url.startswith(
+            ("https://fonts.googleapis.com", "https://fonts.gstatic.com")
+        ), url
+
+
+def test_every_font_family_has_a_local_fallback():
+    """Sans repli local, le rapport s'affiche en Times hors ligne."""
+    page = render(STATS, META)
+    for declaration in re.findall(r"font(?:-family)?\s*:[^;{}]+", page):
+        if '"' not in declaration:
+            continue
+        families = [f.strip().strip('"') for f in declaration.split(":", 1)[1].split(",")]
+        webfonts = {"Barlow Condensed", "IBM Plex Sans", "IBM Plex Mono"}
+        assert any(f not in webfonts for f in families), declaration

@@ -7,7 +7,7 @@
 | 1 | Détection YOLOv8 | Fait — `detection/detector.py`, **poids à fournir** |
 | 2 | Suivi BoT-SORT (+CMC) | Fait — `tracking/tracker.py`, testé sur doublures |
 | 3 | Équipes SigLIP + UMAP + K-Means | Structure prête — `teams/classifier.py`, non testé |
-| 4 | Points clés terrain (YOLOv8-pose, 32 kp) | Géométrie cible prête (`pitch/geometry.py`), **modèle à entraîner** |
+| 4 | Points clés terrain (YOLOv8-pose, 32 kp) | Géométrie + script d'entraînement prêts, **modèle à entraîner** |
 | 5 | Homographie bidirectionnelle | Fait — `pitch/view.py` (+ lissage fenêtre glissante) |
 | 6 | Voronoï / trajectoire ballon | Fait — `analytics/` |
 | 7 | Optimisation vitesse | Non commencé — non bloquant en traitement asynchrone |
@@ -61,7 +61,7 @@ clubs filmant eux-mêmes, c'est simple, mais le contrat doit le dire.
 - **Phase 2 — entraîner le modèle de keypoints terrain** (YOLOv8x-pose, mosaic à 0 :
   l'augmentation mosaic colle plusieurs terrains sur une image et apprend au modèle à
   en chercher plusieurs).
-- **Phase 3 — rapport livrable** : le club veut un PDF/page web avec des chiffres,
-  pas un fichier `.avi`.
+- ~~**Phase 3 — rapport livrable**~~ : fait (`report.py`), imprimable et lisible
+  hors ligne. Démo : https://claude.ai/code/artifact/13840721-26c5-4d07-a58f-1d28977428ed
 - **Phase 4 — industrialisation** : file d'attente, stockage, facturation.
 - **Phase 5 — optimisation** (ONNX/TensorRT), seulement si le coût GPU le justifie.

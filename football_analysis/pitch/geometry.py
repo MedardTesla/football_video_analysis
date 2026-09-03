@@ -62,6 +62,21 @@ class SoccerPitch:
             (L // 2 + r, W // 2),                # 32 rond central droit
         ]
 
+    @property
+    def flip_index(self) -> list[int]:
+        """Correspondance des sommets sous symétrie horizontale (0-based).
+
+        YOLO-pose a besoin de `flip_idx` pour l'augmentation `fliplr` : quand
+        l'image est mirrorée, le coin haut gauche devient le coin haut droit.
+        Sans cette table, `fliplr` apprend au modèle des labels faux — panne
+        silencieuse, le modèle converge quand même mais prédit n'importe quoi.
+
+        Calculé depuis la géométrie plutôt qu'écrit à la main : une table
+        fausse ne se voit qu'après plusieurs heures d'entraînement.
+        """
+        position = {vertex: i for i, vertex in enumerate(self.vertices)}
+        return [position[(self.length - x, y)] for x, y in self.vertices]
+
     # Arêtes en indices 1-based, pour dessiner le radar.
     edges: tuple[tuple[int, int], ...] = field(
         default=(
