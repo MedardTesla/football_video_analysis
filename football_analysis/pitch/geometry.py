@@ -1,0 +1,78 @@
+"""Géométrie d'un terrain de football normalisé, en centimètres.
+
+Les 32 sommets sont l'espace cible de l'homographie : le modèle YOLOv8-pose
+prédit ces mêmes points dans l'image, et `findHomography` relie les deux.
+L'ordre des sommets est le contrat entre le modèle entraîné et ce fichier —
+le changer invalide tous les poids déjà entraînés.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class SoccerPitch:
+    length: int = 12000          # ligne de touche
+    width: int = 7000            # ligne de but
+    penalty_box_length: int = 2015
+    penalty_box_width: int = 4100
+    goal_box_length: int = 550
+    goal_box_width: int = 1832
+    centre_circle_radius: int = 915
+    penalty_spot_distance: int = 1100
+
+    @property
+    def vertices(self) -> list[tuple[int, int]]:
+        L, W = self.length, self.width
+        pb_l, pb_w = self.penalty_box_length, self.penalty_box_width
+        gb_l, gb_w = self.goal_box_length, self.goal_box_width
+        r, spot = self.centre_circle_radius, self.penalty_spot_distance
+        return [
+            (0, 0),                              # 1  coin haut gauche
+            (0, (W - pb_w) // 2),                # 2
+            (0, (W - gb_w) // 2),                # 3
+            (0, (W + gb_w) // 2),                # 4
+            (0, (W + pb_w) // 2),                # 5
+            (0, W),                              # 6  coin bas gauche
+            (gb_l, (W - gb_w) // 2),             # 7
+            (gb_l, (W + gb_w) // 2),             # 8
+            (spot, W // 2),                      # 9  point de penalty gauche
+            (pb_l, (W - pb_w) // 2),             # 10
+            (pb_l, (W - gb_w) // 2),             # 11
+            (pb_l, (W + gb_w) // 2),             # 12
+            (pb_l, (W + pb_w) // 2),             # 13
+            (L // 2, 0),                         # 14 ligne médiane haut
+            (L // 2, W // 2 - r),                # 15 rond central haut
+            (L // 2, W // 2 + r),                # 16 rond central bas
+            (L // 2, W),                         # 17 ligne médiane bas
+            (L - pb_l, (W - pb_w) // 2),         # 18
+            (L - pb_l, (W - gb_w) // 2),         # 19
+            (L - pb_l, (W + gb_w) // 2),         # 20
+            (L - pb_l, (W + pb_w) // 2),         # 21
+            (L - spot, W // 2),                  # 22 point de penalty droit
+            (L - gb_l, (W - gb_w) // 2),         # 23
+            (L - gb_l, (W + gb_w) // 2),         # 24
+            (L, 0),                              # 25 coin haut droit
+            (L, (W - pb_w) // 2),                # 26
+            (L, (W - gb_w) // 2),                # 27
+            (L, (W + gb_w) // 2),                # 28
+            (L, (W + pb_w) // 2),                # 29
+            (L, W),                              # 30 coin bas droit
+            (L // 2 - r, W // 2),                # 31 rond central gauche
+            (L // 2 + r, W // 2),                # 32 rond central droit
+        ]
+
+    # Arêtes en indices 1-based, pour dessiner le radar.
+    edges: tuple[tuple[int, int], ...] = field(
+        default=(
+            (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 17), (17, 16), (16, 15),
+            (15, 14), (14, 1), (2, 10), (10, 11), (11, 12), (12, 13), (13, 5),
+            (3, 7), (7, 8), (8, 4), (18, 21), (18, 19), (19, 20), (20, 21),
+            (23, 24), (26, 27), (27, 28), (28, 29), (25, 26), (29, 30),
+            (30, 17), (25, 14), (19, 23), (24, 20),
+        ),
+        repr=False,
+    )
+
+
+PITCH = SoccerPitch()

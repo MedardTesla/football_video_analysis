@@ -1,0 +1,16 @@
+# Vision / inference
+ultralytics>=8.3.0          # ATTENTION : AGPL-3.0 — voir ROADMAP.md §Licences
+supervision>=0.30.0
+trackers>=2.0.0            # BoT-SORT + compensation mouvement caméra
+opencv-python>=4.10.0
+numpy>=1.26
+
+# Classification d'équipes
+torch>=2.2.0
+transformers>=4.44.0        # SigLIP
+umap-learn>=0.5.6
+scikit-learn>=1.5.0
+
+# Utilitaires
+tqdm>=4.66.0
+pydantic>=2.8.0

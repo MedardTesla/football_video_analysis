@@ -1,0 +1,93 @@
+"""Configuration centrale : chemins, seuils, constantes du pipeline.
+
+Toute valeur réglable vit ici — aucun chemin ni seuil en dur dans les modules.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+MODELS_DIR = ROOT / "models"
+INPUT_DIR = ROOT / "input_video"
+OUTPUT_DIR = ROOT / "output_video"
+CACHE_DIR = ROOT / "stubs"
+
+
+@dataclass
+class DetectionConfig:
+    """Détection joueurs / arbitres / gardiens / ballon."""
+
+    weights: Path = MODELS_DIR / "player_detection.pt"
+    # 1280x1280 étiré depuis 1920x1080 : préserve la résolution du ballon,
+    # qui ne fait que quelques pixels en vue de diffusion.
+    imgsz: int = 1280
+    confidence: float = 0.3
+    # NMS agnostique de classe : un même joueur détecté à la fois comme
+    # `player` et `goalkeeper` ne doit produire qu'une seule boîte.
+    nms_iou: float = 0.5
+    class_agnostic_nms: bool = True
+    batch_size: int = 16
+
+
+@dataclass
+class TrackingConfig:
+    """ByteTrack — joueurs, arbitres, gardiens. Le ballon en est exclu."""
+
+    track_activation_threshold: float = 0.25
+    lost_track_buffer: int = 30
+    minimum_matching_threshold: float = 0.8
+    frame_rate: int = 25
+
+
+@dataclass
+class TeamConfig:
+    """Classification d'équipes : SigLIP -> UMAP -> K-Means."""
+
+    siglip_model: str = "google/siglip-base-patch16-224"
+    embedding_batch_size: int = 32
+    umap_components: int = 3
+    n_teams: int = 2
+    # Nombre de frames échantillonnées pour ajuster le classifieur une fois
+    # pour toutes en début de match.
+    fit_stride: int = 30
+    fit_max_frames: int = 40
+
+
+@dataclass
+class PitchConfig:
+    """Détection des points clés du terrain (YOLOv8-pose, 32 keypoints)."""
+
+    weights: Path = MODELS_DIR / "pitch_keypoints.pt"
+    confidence: float = 0.5
+    # findHomography exige >= 4 correspondances ; on en demande plus pour
+    # éviter les homographies dégénérées sur points quasi colinéaires.
+    min_keypoints: int = 6
+    # Lissage de la matrice d'homographie sur fenêtre glissante.
+    homography_window: int = 5
+
+
+@dataclass
+class BallConfig:
+    """Nettoyage et lissage de la trajectoire du ballon."""
+
+    # Un ballon ne parcourt pas plus de 5 m entre deux frames consécutives :
+    # au-delà, c'est une fausse détection.
+    max_displacement_cm: float = 500.0
+    smoothing_window: int = 5
+
+
+@dataclass
+class Config:
+    detection: DetectionConfig = field(default_factory=DetectionConfig)
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
+    teams: TeamConfig = field(default_factory=TeamConfig)
+    pitch: PitchConfig = field(default_factory=PitchConfig)
+    ball: BallConfig = field(default_factory=BallConfig)
+
+
+# Identifiants de classe du modèle de détection.
+BALL_ID = 0
+GOALKEEPER_ID = 1
+PLAYER_ID = 2
+REFEREE_ID = 3

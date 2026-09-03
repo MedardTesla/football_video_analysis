@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Modèles et données lourdes (jamais dans git — voir data/README.md)
+models/
+*.pt
+*.onnx
+*.engine
+input_video/
+output_video/
+stubs/
+*.pkl
+runs/
+
+# Datasets téléchargés
+training/football-players-detection-1/
+
+# Environnement
+.env
+.ipynb_checkpoints/
