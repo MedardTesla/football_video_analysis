@@ -145,3 +145,44 @@ def test_detection_mosaic_is_enabled_unlike_pose(detection_code):
 def test_detection_key_is_never_written_in_clear(detection_code):
     assert "getpass" in detection_code
     assert "api_key='" not in detection_code.replace(" ", "")
+
+
+# --- Portabilité Colab / Kaggle ---------------------------------------------
+
+@pytest.fixture(scope="module")
+def tous_les_codes(code, detection_code):
+    return {"points clés": code, "détecteur": detection_code}
+
+
+def test_neither_notebook_hard_requires_colab(tous_les_codes):
+    """Le quota GPU de Colab est opaque et se bloque sans préavis ; Kaggle
+    offre 30 h par semaine. Les deux doivent fonctionner."""
+    for nom, src in tous_les_codes.items():
+        assert "from google.colab" in src, nom
+        # Mais toujours dans un try, jamais en import de tête.
+        for ligne in src.splitlines():
+            if "from google.colab" in ligne:
+                assert ligne.startswith("    "), f"{nom} : import Colab non protégé"
+        assert "except ImportError" in src, nom
+
+
+def test_both_notebooks_handle_the_kaggle_input_folder(tous_les_codes):
+    for nom, src in tous_les_codes.items():
+        assert "/kaggle/input" in src, nom
+        assert "/kaggle/working" in src, nom
+
+
+def test_both_notebooks_still_accept_a_zip(tous_les_codes):
+    for nom, src in tous_les_codes.items():
+        assert "zipfile.ZipFile" in src, nom
+        assert "extractall" in src, nom
+
+
+def test_the_gpu_instructions_cover_both_platforms():
+    for fichier in (NOTEBOOK, DETECTION):
+        nb = json.loads(fichier.read_text(encoding="utf-8"))
+        markdown = "\n".join(
+            "".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "markdown"
+        )
+        assert "Kaggle" in markdown, fichier.name
+        assert "Accelerator" in markdown, fichier.name

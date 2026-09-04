@@ -1,7 +1,14 @@
 # Modèles et données
 
 Rien de lourd n'est versionné (voir `.gitignore`). Les deux modèles s'obtiennent
-avec les notebooks Colab de `training/` — GPU gratuit, aucun matériel requis :
+avec les notebooks de `training/`, sur **Colab ou Kaggle** — GPU gratuit, aucun
+matériel requis. Les notebooks détectent la plateforme et s'adaptent seuls.
+
+Kaggle offre 30 h de GPU par semaine, contre un quota variable et sans préavis
+chez Colab : c'est le choix par défaut si un entraînement doit être relancé.
+Sur Kaggle, l'archive d'images du test facultatif s'ajoute comme *Dataset*
+depuis le panneau de droite, et les poids se récupèrent dans l'onglet *Output*
+après un *Save Version*.
 
 | Modèle | Notebook | Durée |
 |---|---|---|
