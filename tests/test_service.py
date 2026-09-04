@@ -824,3 +824,26 @@ def test_the_finished_page_offers_naming(client):
     tc, api = client
     job = _match_avec_stats(api)
     assert "Nommer les joueurs" in tc.get(job.public_url).text
+
+
+def test_orphaned_folders_are_removed(store, storage):
+    """Une panne ou une suppression pendant l'analyse laisse des fichiers
+    sans ligne en base ; la purge par ancienneté ne les prendrait que
+    quatre-vingt-dix jours plus tard."""
+    job = store.create("Club", "Match", "/tmp/v.mp4")
+    (storage.job_dir(job.id) / "rapport.html").write_text("connu")
+    (storage.job_dir("fantome") / "rapport.html").write_text("orphelin")
+
+    assert storage.purge_orphans(store.all_ids()) == ["fantome"]
+    assert (storage.root / job.id).exists()
+    assert not (storage.root / "fantome").exists()
+
+
+def test_purging_orphans_on_an_empty_store_is_harmless(storage):
+    assert storage.purge_orphans(set()) == []
+
+
+def test_all_ids_lists_every_match(store):
+    a = store.create("Club", "A", "/tmp/v.mp4")
+    b = store.create("Club", "B", "/tmp/v.mp4")
+    assert store.all_ids() == {a.id, b.id}

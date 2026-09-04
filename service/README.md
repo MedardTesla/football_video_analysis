@@ -122,6 +122,9 @@ compris ceux dont l'analyse est en cours et dont le travail serait perdu.
 - **Rétention de 90 jours** : les dossiers de match plus anciens sont purgés
   par le worker, au démarrage et avant chaque analyse. La vidéo annotée est le
   seul poste qui grossit sans limite.
+- **Purge des orphelins au démarrage** : un arrêt brutal ou une suppression
+  pendant l'analyse laisse des fichiers sans ligne en base. La purge par
+  ancienneté finirait par les prendre, mais quatre-vingt-dix jours plus tard.
 - **`/sante` répond 503** dès que la réserve est entamée, avec l'espace libre
   en gigaoctets.
 

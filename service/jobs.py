@@ -408,6 +408,11 @@ class JobStore:
         with self._connect() as db:
             db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
 
+    def all_ids(self) -> set[str]:
+        """Identifiants de tous les matchs connus, pour repérer les orphelins."""
+        with self._connect() as db:
+            return {r["id"] for r in db.execute("SELECT id FROM jobs")}
+
     def counts_by_state(self) -> dict[str, int]:
         with self._connect() as db:
             rows = db.execute(

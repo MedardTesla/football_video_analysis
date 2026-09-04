@@ -295,3 +295,56 @@ def test_a_broken_link_is_explained_to_the_club(contexte, tmp_path, monkeypatch)
     fini = store.get(job.id)
     assert fini.state is JobState.FAILED
     assert "lien est public" in fini.error
+
+
+def test_a_match_deleted_mid_analysis_is_dropped_silently(contexte, tmp_path):
+    """C'est en s'apercevant d'une erreur de vidéo qu'un club supprime son
+    match — souvent pendant l'analyse."""
+    store, storage, job, video = contexte
+    store.update(job.id, contact="club@exemple.fr")
+    espion = NotifierEspion()
+    reussi = _pipeline_reussi(tmp_path)
+
+    def run_puis_suppression(video_path, output_path, config, **k):
+        storage.purge(job.id)
+        store.delete(job.id)
+        return reussi(video_path, output_path, config)
+
+    worker.process(job.id, store, storage, Config(),
+                   run=run_puis_suppression, notifier=espion)
+
+    assert espion.envoyes == [], "notification pour un match supprimé"
+    assert not (storage.root / job.id).exists(), "fichiers orphelins"
+
+
+def test_a_failure_on_a_deleted_match_notifies_nobody(contexte):
+    store, storage, job, _ = contexte
+    store.update(job.id, contact="club@exemple.fr")
+    espion = NotifierEspion()
+
+    def echoue(*a, **k):
+        store.delete(job.id)
+        raise RuntimeError("panne")
+
+    worker.process(job.id, store, storage, Config(), run=echoue, notifier=espion)
+    assert espion.envoyes == []
+
+
+def test_a_match_still_present_is_finalised_normally(contexte, tmp_path):
+    store, storage, job, _ = contexte
+    store.update(job.id, contact="club@exemple.fr")
+    espion = NotifierEspion()
+    worker.process(job.id, store, storage, Config(),
+                   run=_pipeline_reussi(tmp_path), notifier=espion)
+    assert store.get(job.id).state is JobState.DONE
+    assert len(espion.envoyes) == 1
+
+
+def test_startup_removes_orphaned_folders(contexte, tmp_path):
+    store, storage, _, _ = contexte
+    (storage.job_dir("fantome") / "rapport.html").write_text("orphelin")
+
+    worker.serve(store, storage, Config(), once=True,
+                 run=_pipeline_reussi(tmp_path))
+
+    assert not (storage.root / "fantome").exists()

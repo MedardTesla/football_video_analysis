@@ -100,6 +100,21 @@ class Storage:
         """Espace libre sur le disque qui porte le stockage."""
         return shutil.disk_usage(self.root).free
 
+    def purge_orphans(self, connus: set[str]) -> list[str]:
+        """Supprime les dossiers dont le match n'existe plus en base.
+
+        Une panne du worker, un arrêt brutal ou une suppression pendant
+        l'analyse laissent des fichiers sans ligne correspondante. La purge
+        par ancienneté finit par les prendre, mais quatre-vingt-dix jours plus
+        tard : d'ici là ils occupent le disque sans que rien ne les désigne.
+        """
+        supprimes = []
+        for dossier in self.root.iterdir():
+            if dossier.is_dir() and dossier.name not in connus:
+                shutil.rmtree(dossier, ignore_errors=True)
+                supprimes.append(dossier.name)
+        return supprimes
+
     def purge_older_than(self, days: int = RETENTION_JOURS) -> list[str]:
         """Supprime les dossiers de match plus vieux que `days`.
 

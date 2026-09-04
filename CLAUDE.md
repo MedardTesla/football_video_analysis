@@ -223,6 +223,11 @@ Décisions structurantes :
   au dépôt plutôt qu'ignorée — sinon le club attendrait un message qui ne
   viendrait jamais. `notify.Notifier` est un protocole : un envoi WhatsApp se
   branchera sans toucher au reste.
+- **Le worker revérifie le match avant de conclure.** Un club supprime son
+  match précisément quand il s'aperçoit d'une erreur de vidéo, donc souvent
+  pendant l'analyse. Sans cette vérification il recevait « analyse terminée »
+  pour un match effacé, et les fichiers produits restaient sur le disque,
+  invisibles de la base.
 - **Les matchs abandonnés sont repris.** Un worker tué laisse un match en « en
   cours » pour toujours ; `reclaim_stale` le remet en file après 15 min sans
   nouvelle. Les écritures de progression servent de battement de cœur, ce qui

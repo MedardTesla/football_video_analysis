@@ -116,6 +116,17 @@ def process(
             ReportMeta(match_name=job.match_name, played_on=_date_du_match(job)),
             radar_png=resultat.radar_path,
         )
+        # Le club a pu supprimer son match pendant l'analyse — c'est
+        # précisément quand on s'aperçoit d'une erreur de vidéo qu'on le fait.
+        # Sans cette vérification, il recevrait « analyse terminée » pour un
+        # match qu'il vient d'effacer, et les fichiers produits resteraient sur
+        # le disque, invisibles de la base.
+        if store.get(job.id) is None:
+            log.info("match %s supprimé pendant l'analyse : résultats jetés", job.id)
+            storage.purge(job.id)
+            Path(job.video_path).unlink(missing_ok=True)
+            return
+
         store.update(
             job.id,
             state=JobState.DONE,
@@ -137,6 +148,9 @@ def process(
         # Le message est lu par un club, pas par un développeur : la trace
         # complète va dans les logs, pas dans le rapport.
         log.exception("échec du match %s", job.id)
+        if store.get(job.id) is None:
+            storage.purge(job.id)
+            return
         raison = _message_lisible(erreur)
         store.update(job.id, state=JobState.FAILED, error=raison)
         _prevenir(
@@ -182,6 +196,13 @@ def serve(
     purges = storage.purge_older_than()
     if purges:
         log.info("%d match(s) purgés après rétention : %s", len(purges), purges)
+
+    # Au démarrage seulement : parcourir tout le stockage à chaque match
+    # coûterait cher, et un orphelin n'apparaît qu'après un arrêt brutal.
+    orphelins = storage.purge_orphans(store.all_ids())
+    if orphelins:
+        log.warning("%d dossier(s) orphelin(s) supprimé(s) : %s",
+                    len(orphelins), orphelins)
 
     while True:
         job = store.claim_next()
