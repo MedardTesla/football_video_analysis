@@ -170,7 +170,15 @@ web/pages.py rendu serveur, palette et polices communes au rapport
 
 Lancement : `uvicorn service.api:app` d'un côté, `python -m service.run_worker`
 de l'autre. Ils ne partagent que `FA_DATA_ROOT` — l'API tient sur une petite
-machine, le worker a besoin d'un GPU qu'on veut pouvoir éteindre.
+machine, le worker a besoin d'un GPU qu'on veut pouvoir éteindre. Déploiement
+en deux images distinctes : `Dockerfile` (cibles `api` et `worker`),
+`docker-compose.yml`, détails dans `DEPLOIEMENT.md`.
+
+**L'API ne doit jamais charger torch ni OpenCV.** `service/settings.py` porte
+les constantes partagées et `worker.py` importe le pipeline tardivement, ce qui
+permet une image API de quelques dizaines de mégaoctets au lieu de plusieurs
+gigaoctets. Deux tests le vérifient en sous-processus ; y ajouter un import
+direct du pipeline dans `api.py` ou en tête de `worker.py` les casse.
 
 Décisions structurantes :
 

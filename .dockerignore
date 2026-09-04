@@ -1,0 +1,14 @@
+.venv/
+.git/
+__pycache__/
+*.pyc
+models/
+input_video/
+output_video/
+stubs/
+data/
+runs/
+training/
+tests/
+*.md
+.env

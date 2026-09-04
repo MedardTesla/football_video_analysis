@@ -12,17 +12,13 @@ un client la demande.
 """
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from .jobs import Job, JobState, JobStore
+from .settings import DATA_ROOT, STALE_SECONDS
 from .storage import Storage, UploadRefuse
 from .web import pages
-
-DATA_ROOT = Path(os.environ.get("FA_DATA_ROOT", "data/service"))
 
 app = FastAPI(title="Analyse de match", docs_url=None, redoc_url=None)
 store = JobStore(DATA_ROOT / "jobs.db")
@@ -110,8 +106,6 @@ def sante() -> JSONResponse:
     est mort et personne ne reprend la file. La réponse passe en 503 dans ce
     cas, pour qu'une sonde externe le détecte sans lire le corps.
     """
-    from .worker import STALE_SECONDS
-
     bloques = store.stale_count(STALE_SECONDS)
     corps = {
         "jobs": store.counts_by_state(),

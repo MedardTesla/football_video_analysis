@@ -116,8 +116,13 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("FA_DATA_ROOT", str(tmp_path))
     import importlib
     from fastapi.testclient import TestClient
+    import service.settings as settings
     import service.api as api
 
+    # settings d'abord : c'est lui qui lit FA_DATA_ROOT, et api en dérive
+    # son magasin. Ne recharger qu'api laisserait tous les tests partager
+    # la même base.
+    importlib.reload(settings)
     importlib.reload(api)
     return TestClient(api.app), api
 
@@ -361,3 +366,42 @@ def test_health_is_green_when_the_queue_moves(client):
     reponse = tc.get("/sante")
     assert reponse.status_code == 200
     assert reponse.json()["bloques"] == 0
+
+
+def test_the_api_does_not_load_the_machine_learning_stack():
+    """L'API reçoit des fichiers et sert des pages : elle n'a besoin ni de
+    torch ni d'OpenCV.
+
+    Le worker les charge, lui, mais tardivement. Faire transiter une simple
+    constante par `worker.py` suffisait à imposer plusieurs gigaoctets de
+    bibliothèques de calcul sur la machine qui sert le formulaire de dépôt.
+    """
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; import service.api; "
+        "lourds = [m for m in ('torch','ultralytics','cv2','supervision','transformers') "
+        "if m in sys.modules]; print(','.join(lourds))"
+    )
+    sortie = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=180
+    )
+    assert sortie.returncode == 0, sortie.stderr[-500:]
+    assert sortie.stdout.strip() == "", f"modules lourds chargés : {sortie.stdout.strip()}"
+
+
+def test_the_worker_module_is_importable_without_the_pipeline():
+    """Permet de tester la file et les erreurs sans la pile de calcul."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; import service.worker; "
+        "print('torch' in sys.modules or 'ultralytics' in sys.modules)"
+    )
+    sortie = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=180
+    )
+    assert sortie.returncode == 0, sortie.stderr[-500:]
+    assert sortie.stdout.strip() == "False"

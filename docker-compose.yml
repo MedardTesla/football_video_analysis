@@ -1,0 +1,43 @@
+# API et worker séparés : ils ne partagent qu'un volume de données.
+#
+#   docker compose up -d api          # en permanence, petite machine
+#   docker compose up -d worker       # machine GPU, à éteindre si file vide
+#
+# Le worker exige un GPU. Sans lui, un match de 90 minutes prendrait des
+# heures : SigLIP traite environ 3 vignettes par seconde sur processeur.
+
+services:
+  api:
+    build:
+      context: .
+      target: api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - donnees:/data
+    environment:
+      FA_DATA_ROOT: /data
+
+  worker:
+    build:
+      context: .
+      target: worker
+    restart: unless-stopped
+    volumes:
+      - donnees:/data
+      # Poids montés en lecture seule : ils changent à chaque
+      # réentraînement et n'ont pas leur place dans l'image.
+      - ./models:/app/models:ro
+    environment:
+      FA_DATA_ROOT: /data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  donnees:

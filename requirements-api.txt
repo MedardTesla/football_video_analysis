@@ -1,0 +1,5 @@
+# Machine qui sert le formulaire et les rapports. Aucune pile de calcul :
+# un test vérifie que l'API ne charge ni torch ni OpenCV.
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9

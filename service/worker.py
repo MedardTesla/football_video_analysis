@@ -11,18 +11,39 @@ import logging
 import time
 from datetime import date
 from pathlib import Path
+from typing import Callable
 
 from football_analysis.config import Config
-from football_analysis.pipeline import run
 from football_analysis.report import ReportMeta, write as write_report
 
 from .jobs import JobState, JobStore
+from .settings import STALE_SECONDS
 from .storage import Storage
 
 log = logging.getLogger("worker")
 
 
-def process(job_id: str, store: JobStore, storage: Storage, config: Config) -> None:
+def _load_pipeline() -> Callable:
+    """Import tardif du pipeline.
+
+    `football_analysis.pipeline` tire torch, ultralytics et OpenCV. Les charger
+    à l'import du module obligerait l'API — qui ne fait que recevoir des
+    fichiers et servir des pages — à embarquer toute la pile de calcul.
+    """
+    from football_analysis.pipeline import run
+
+    return run
+
+
+def process(
+    job_id: str,
+    store: JobStore,
+    storage: Storage,
+    config: Config,
+    run: Callable | None = None,
+) -> None:
+    """`run` permet d'injecter le pipeline ; par défaut il est chargé tardivement."""
+    run = run or _load_pipeline()
     job = store.get(job_id)
     if job is None:
         return
@@ -97,16 +118,10 @@ def _message_lisible(erreur: Exception) -> str:
     return "L'analyse a échoué. Nous avons été prévenus et revenons vers vous."
 
 
-# Un match sans nouvelle pendant ce délai est considéré abandonné. Large à
-# dessein : la phase de calibrage du classifieur d'équipes ne remonte aucune
-# progression et peut durer plusieurs minutes sur une longue vidéo.
-STALE_SECONDS = 15 * 60
-
-
 def serve(
     store: JobStore, storage: Storage, config: Config | None = None,
     poll_seconds: float = 5.0, once: bool = False,
-    stale_seconds: float = STALE_SECONDS,
+    stale_seconds: float = STALE_SECONDS, run: Callable | None = None,
 ) -> None:
     """Boucle de traitement. `once=True` vide la file puis rend la main."""
     config = config or Config()
@@ -126,7 +141,7 @@ def serve(
             store.reclaim_stale(stale_seconds)
             time.sleep(poll_seconds)
             continue
-        process(job.id, store, storage, config)
+        process(job.id, store, storage, config, run=run)
         # Ne pas tester la file avec claim_next : elle réserverait le job
         # suivant avant de l'abandonner en état « en cours », définitivement.
         if once and store.pending_count() == 0:

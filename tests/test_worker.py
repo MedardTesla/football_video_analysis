@@ -45,9 +45,7 @@ def _pipeline_reussi(dossier: Path):
 
 def test_a_successful_run_produces_a_report(contexte, monkeypatch, tmp_path):
     store, storage, job, video = contexte
-    monkeypatch.setattr(worker, "run", _pipeline_reussi(tmp_path))
-
-    worker.process(job.id, store, storage, Config())
+    worker.process(job.id, store, storage, Config(), run=_pipeline_reussi(tmp_path))
 
     fini = store.get(job.id)
     assert fini.state is JobState.DONE
@@ -60,17 +58,13 @@ def test_the_source_video_is_deleted_after_analysis(contexte, monkeypatch, tmp_p
     """Ce sont les images du club, pas les nôtres — et c'est le poste de
     stockage dominant."""
     store, storage, job, video = contexte
-    monkeypatch.setattr(worker, "run", _pipeline_reussi(tmp_path))
-
-    worker.process(job.id, store, storage, Config())
+    worker.process(job.id, store, storage, Config(), run=_pipeline_reussi(tmp_path))
     assert not video.exists()
 
 
 def test_the_coverage_reaches_the_report(contexte, monkeypatch, tmp_path):
     store, storage, job, _ = contexte
-    monkeypatch.setattr(worker, "run", _pipeline_reussi(tmp_path))
-
-    worker.process(job.id, store, storage, Config())
+    worker.process(job.id, store, storage, Config(), run=_pipeline_reussi(tmp_path))
     page = Path(store.get(job.id).report_path).read_text(encoding="utf-8")
     assert "62%" in page
 
@@ -81,8 +75,7 @@ def test_a_missing_model_is_not_blamed_on_the_club(contexte, monkeypatch):
     def echoue(*a, **k):
         raise FileNotFoundError("poids introuvables : models/player_detection.pt")
 
-    monkeypatch.setattr(worker, "run", echoue)
-    worker.process(job.id, store, storage, Config())
+    worker.process(job.id, store, storage, Config(), run=echoue)
 
     fini = store.get(job.id)
     assert fini.state is JobState.FAILED
@@ -96,8 +89,7 @@ def test_an_unreadable_video_tells_the_club_what_to_do(contexte, monkeypatch):
     def echoue(*a, **k):
         raise FileNotFoundError("vidéo illisible : /data/source.mp4")
 
-    monkeypatch.setattr(worker, "run", echoue)
-    worker.process(job.id, store, storage, Config())
+    worker.process(job.id, store, storage, Config(), run=echoue)
     assert "déposer à nouveau" in store.get(job.id).error.lower()
 
 
@@ -107,8 +99,7 @@ def test_an_unexpected_error_stays_vague_but_polite(contexte, monkeypatch):
     def echoue(*a, **k):
         raise RuntimeError("CUDA out of memory at 0x7f2a")
 
-    monkeypatch.setattr(worker, "run", echoue)
-    worker.process(job.id, store, storage, Config())
+    worker.process(job.id, store, storage, Config(), run=echoue)
 
     erreur = store.get(job.id).error
     assert "CUDA" not in erreur
@@ -120,9 +111,7 @@ def test_the_loop_drains_the_queue_then_stops(contexte, monkeypatch, tmp_path):
     for i in range(3):
         v = tmp_path / f"v{i}.mp4"; v.write_bytes(b"x")
         store.create("Club", f"Match {i}", str(v))
-    monkeypatch.setattr(worker, "run", _pipeline_reussi(tmp_path))
-
-    worker.serve(store, storage, Config(), once=True)
+    worker.serve(store, storage, Config(), once=True, run=_pipeline_reussi(tmp_path))
 
     assert store.pending_count() == 0
     assert store.counts_by_state().get("processing") is None
@@ -131,7 +120,8 @@ def test_the_loop_drains_the_queue_then_stops(contexte, monkeypatch, tmp_path):
 def test_the_loop_returns_on_an_empty_queue(tmp_path):
     store = JobStore(tmp_path / "jobs.db")
     storage = Storage(tmp_path / "videos")
-    worker.serve(store, storage, Config(), once=True)     # ne doit pas boucler
+    worker.serve(store, storage, Config(), once=True,
+                 run=lambda *a, **k: None)     # ne doit pas boucler
 
 
 def test_progress_reaches_the_store(contexte, monkeypatch, tmp_path):
@@ -144,8 +134,7 @@ def test_progress_reaches_the_store(contexte, monkeypatch, tmp_path):
             on_progress(f)
         return reussi(video_path, output_path, config)
 
-    monkeypatch.setattr(worker, "run", run_avec_progression)
-    worker.process(job.id, store, storage, Config())
+    worker.process(job.id, store, storage, Config(), run=run_avec_progression)
     assert store.get(job.id).progress == 1.0
 
 
@@ -169,8 +158,7 @@ def test_tiny_progress_steps_do_not_hammer_the_database(contexte, monkeypatch, t
             on_progress(i / 500)
         return reussi(video_path, output_path, config)
 
-    monkeypatch.setattr(worker, "run", run_bavard)
-    worker.process(job.id, store, storage, Config())
+    worker.process(job.id, store, storage, Config(), run=run_bavard)
 
     # 500 appels, au plus une écriture par point de pourcentage.
     assert len(ecritures) <= 101, len(ecritures)
@@ -189,8 +177,8 @@ def test_a_dead_workers_job_is_recovered_at_startup(contexte, monkeypatch, tmp_p
     db.execute("UPDATE jobs SET updated_at = ? WHERE id = ?", (vieux, job.id))
     db.commit(); db.close()
 
-    monkeypatch.setattr(worker, "run", _pipeline_reussi(tmp_path))
-    worker.serve(store, storage, Config(), once=True, stale_seconds=900)
+    worker.serve(store, storage, Config(), once=True, stale_seconds=900,
+                 run=_pipeline_reussi(tmp_path))
 
     assert store.get(job.id).state is JobState.DONE
 
