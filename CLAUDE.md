@@ -200,8 +200,12 @@ Décisions structurantes :
   évite de reprendre un match qui avance encore. `attempts` plafonne les
   reprises : un fichier qui fait planter le worker bloquerait sinon la file
   derrière lui indéfiniment.
-- **`/sante` répond 503 si des matchs sont bloqués**, pour qu'une sonde externe
-  détecte un worker mort sans lire le corps de la réponse.
+- **`/sante` répond 503 si des matchs sont bloqués ou si le disque sature**,
+  pour qu'une sonde externe détecte la panne sans lire le corps de la réponse.
+- **L'espace disque est protégé sur trois fronts** : réserve de 5 Go vérifiée
+  avant *et pendant* l'écriture d'un dépôt, rétention de 90 jours purgée par le
+  worker. Le dépôt étant ouvert sans compte, un disque plein arrêterait le
+  service pour tous les clubs — y compris les analyses en cours.
 
 ## Current state vs. README
 

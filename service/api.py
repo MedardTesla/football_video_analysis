@@ -106,11 +106,17 @@ def sante() -> JSONResponse:
     est mort et personne ne reprend la file. La réponse passe en 503 dans ce
     cas, pour qu'une sonde externe le détecte sans lire le corps.
     """
+    from .storage import RESERVE_DISQUE
+
     bloques = store.stale_count(STALE_SECONDS)
+    libre = storage.free_bytes()
+    sature = libre < RESERVE_DISQUE
     corps = {
         "jobs": store.counts_by_state(),
         "en_attente": store.pending_count(),
         "bloques": bloques,
         "stockage_go": round(storage.usage_bytes() / 1024**3, 2),
+        "disque_libre_go": round(libre / 1024**3, 2),
+        "sature": sature,
     }
-    return JSONResponse(corps, status_code=503 if bloques else 200)
+    return JSONResponse(corps, status_code=503 if (bloques or sature) else 200)

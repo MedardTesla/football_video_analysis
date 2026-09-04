@@ -42,6 +42,21 @@ planter le worker serait relancé indéfiniment et bloquerait toute la file.
 Surveillance : `/sante` répond **503** si des matchs sont bloqués. Une sonde
 externe suffit alors à détecter un worker mort.
 
+## Protection du disque
+
+Le dépôt est ouvert sans compte : n'importe qui peut envoyer 8 Go. Trois
+garde-fous, parce qu'un disque plein arrête le service pour tous les clubs, y
+compris ceux dont l'analyse est en cours et dont le travail serait perdu.
+
+- **Réserve de 5 Go** : un dépôt est refusé si l'espace libre passe dessous,
+  et le contrôle est refait *pendant* l'écriture — la taille annoncée par un
+  client n'engage à rien, et plusieurs envois se partagent le même disque.
+- **Rétention de 90 jours** : les dossiers de match plus anciens sont purgés
+  par le worker, au démarrage et avant chaque analyse. La vidéo annotée est le
+  seul poste qui grossit sans limite.
+- **`/sante` répond 503** dès que la réserve est entamée, avec l'espace libre
+  en gigaoctets.
+
 ## Coût de traitement mesuré
 
 | Échantillonnage | Frames sur 90 min | T4 | A10G |

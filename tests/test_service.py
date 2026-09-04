@@ -405,3 +405,65 @@ def test_the_worker_module_is_importable_without_the_pipeline():
     )
     assert sortie.returncode == 0, sortie.stderr[-500:]
     assert sortie.stdout.strip() == "False"
+
+
+# --- Protection du disque ----------------------------------------------------
+
+def test_an_upload_is_refused_when_the_disk_is_nearly_full(storage, monkeypatch):
+    """Le dépôt est ouvert sans compte : quelques envois simultanés
+    suffiraient à saturer le disque et à faire tomber le service pour tous
+    les clubs, y compris ceux dont l'analyse est en cours."""
+    import service.storage as module
+
+    monkeypatch.setattr(storage, "free_bytes", lambda: module.RESERVE_DISQUE - 1)
+    with pytest.raises(UploadRefuse, match="saturé"):
+        storage.save_upload("abc", "match.mp4", io.BytesIO(b"x" * 1000))
+    assert not list(storage.job_dir("abc").glob("source*"))
+
+
+def test_an_upload_proceeds_when_the_disk_has_room(storage, monkeypatch):
+    import service.storage as module
+
+    monkeypatch.setattr(storage, "free_bytes", lambda: module.RESERVE_DISQUE * 4)
+    chemin = storage.save_upload("abc", "match.mp4", io.BytesIO(b"x" * 1000))
+    assert Path(chemin).exists()
+
+
+def test_old_matches_are_purged(storage, tmp_path):
+    """La vidéo annotée est le seul poste qui grossit sans limite."""
+    import os
+    import time
+
+    for nom, age_jours in (("vieux", 200), ("recent", 3)):
+        dossier = storage.job_dir(nom)
+        fichier = dossier / "analyse.mp4"
+        fichier.write_bytes(b"x" * 100)
+        quand = time.time() - age_jours * 86400
+        os.utime(fichier, (quand, quand))
+        os.utime(dossier, (quand, quand))
+
+    assert storage.purge_older_than(days=90) == ["vieux"]
+    assert not (storage.root / "vieux").exists()
+    assert (storage.root / "recent").exists()
+
+
+def test_purging_an_empty_store_is_harmless(storage):
+    assert storage.purge_older_than(days=90) == []
+
+
+def test_health_flags_a_full_disk(client, monkeypatch):
+    """La sonde doit voir venir le disque plein, pas le constater après."""
+    tc, api = client
+    import service.storage as module
+
+    monkeypatch.setattr(api.storage, "free_bytes", lambda: module.RESERVE_DISQUE - 1)
+    reponse = tc.get("/sante")
+    assert reponse.status_code == 503
+    assert reponse.json()["sature"] is True
+
+
+def test_health_reports_free_space_when_healthy(client):
+    tc, _ = client
+    corps = tc.get("/sante").json()
+    assert corps["sature"] is False
+    assert corps["disque_libre_go"] > 0

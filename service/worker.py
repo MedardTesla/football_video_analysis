@@ -132,6 +132,10 @@ def serve(
     if repris:
         log.warning("%d match(s) repris après interruption : %s", len(repris), repris)
 
+    purges = storage.purge_older_than()
+    if purges:
+        log.info("%d match(s) purgés après rétention : %s", len(purges), purges)
+
     while True:
         job = store.claim_next()
         if job is None:
@@ -141,6 +145,11 @@ def serve(
             store.reclaim_stale(stale_seconds)
             time.sleep(poll_seconds)
             continue
+
+        # Purger avant de traiter, pas après : c'est maintenant qu'il faut de
+        # la place, et un disque plein ferait échouer l'analyse en cours de
+        # route après plusieurs dizaines de minutes de GPU.
+        storage.purge_older_than()
         process(job.id, store, storage, config, run=run)
         # Ne pas tester la file avec claim_next : elle réserverait le job
         # suivant avant de l'abandonner en état « en cours », définitivement.

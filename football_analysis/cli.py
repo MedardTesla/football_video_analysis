@@ -2,12 +2,38 @@
 from __future__ import annotations
 
 import argparse
+import sys
+import time
 from datetime import date
 from pathlib import Path
+
+from dataclasses import replace
 
 from .config import Config
 from .pipeline import run
 from .report import ReportMeta, write as write_report
+
+
+def _afficher_progression():
+    """Barre d'avancement sur une seule ligne.
+
+    Une analyse dure des dizaines de minutes : sans retour, rien ne distingue
+    un traitement en cours d'un processus figé.
+    """
+    debut = time.monotonic()
+
+    def afficher(fraction: float) -> None:
+        ecoule = time.monotonic() - debut
+        restant = ecoule * (1 - fraction) / fraction if fraction > 0.01 else None
+        pleine = int(fraction * 30)
+        barre = "█" * pleine + "·" * (30 - pleine)
+        fin = f" | reste ~{restant / 60:.0f} min" if restant else ""
+        sys.stderr.write(f"\r  {barre} {fraction:5.1%}{fin}   ")
+        sys.stderr.flush()
+        if fraction >= 1.0:
+            sys.stderr.write("\n")
+
+    return afficher
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,9 +54,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--no-report", action="store_true", help="ne pas générer le rapport HTML"
     )
+    parser.add_argument(
+        "--fps", type=float, default=None,
+        help="images analysées par seconde (défaut 12 ; au-delà, coût doublé "
+             "sans gain mesuré)",
+    )
+    parser.add_argument(
+        "--quiet", action="store_true", help="ne pas afficher la progression"
+    )
     args = parser.parse_args(argv)
 
-    result = run(args.video, args.output, Config(), with_radar=not args.no_radar)
+    config = Config()
+    if args.fps is not None:
+        config.processing = replace(config.processing, sample_fps=args.fps)
+
+    result = run(
+        args.video, args.output, config,
+        with_radar=not args.no_radar,
+        on_progress=None if args.quiet else _afficher_progression(),
+    )
     print(f"vidéo        : {result.video_path}")
     print(f"statistiques : {result.stats_path}")
 
