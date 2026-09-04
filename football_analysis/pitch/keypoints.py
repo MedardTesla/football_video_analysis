@@ -25,7 +25,9 @@ class PitchKeypointDetector:
 
     def detect_one(self, frame: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Points clés d'une frame. Rend des confiances nulles si rien n'est vu."""
-        result = self.model.predict(frame, verbose=False)[0]
+        result = self.model.predict(
+            frame, conf=self.config.instance_confidence, verbose=False
+        )[0]
         kp = result.keypoints
         if kp is None or kp.xy is None or len(kp.xy) == 0:
             return np.zeros((32, 2)), np.zeros(32)

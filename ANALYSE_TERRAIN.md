@@ -275,3 +275,60 @@ Un terrain réel mesure entre 100 et 110 m de long. Les dimensions restent
 réglables par club : celui qui mesure le sien supprime l'incertitude, sinon
 elle vaut environ ± 5 % sur les distances. C'est à dire au client, et c'est
 une mesure au décamètre de cinq minutes.
+
+
+---
+
+# Premier modèle de points clés entraîné
+
+`yolov8m-pose`, 300 époques sur le dataset public. Mesures faites en local avec
+les poids obtenus.
+
+## Un bug de seuil, trouvé en mesurant
+
+Le modèle prédit d'excellents points clés tout en donnant une confiance de
+**boîte** très variable — de 0,05 à 0,89 sur des images comparables. Le seuil
+par défaut d'Ultralytics (0,25) jetait alors l'instance entière, points
+compris. `PitchConfig.instance_confidence` descend ce seuil à 0,02 : le modèle
+ne connaît qu'une classe, il n'y a aucun faux positif à craindre, et le
+filtrage utile se fait sur la confiance des **points**.
+
+Effet mesuré sur les images Djoliba : **42 % → 83 %** d'images exploitables.
+
+## Où en est réellement le modèle
+
+| Domaine | Images exploitables | Erreur médiane |
+|---|---|---|
+| Validation du dataset public | 100 % | 1,46 m |
+| Djoliba, tribune haute | 83 % | 5,29 m |
+| ASKO, bord de touche | **0 %** | — |
+
+Les deux premières lignes ne sont pas strictement comparables : la première
+mesure contre la vérité terrain annotée, la seconde par validation croisée
+faute d'annotations. Cette dernière est plus sévère. L'ordre de grandeur reste
+parlant.
+
+Deux problèmes distincts, tous deux réels :
+
+**Le modèle est sous-entraîné, même sur son propre domaine.** 1,46 m alors que
+le bruit d'annotation du dataset se situe vers 0,42 m. Un `yolov8x-pose`, ou
+davantage d'époques, réduirait cet écart.
+
+**L'écart de domaine est net.** 1,46 m sur le dataset public contre 5,29 m sur
+Djoliba, pourtant filmé en tribune haute comme les images d'entraînement.
+
+**Le bord de touche est un échec total.** Aucune instance détectée, même en
+abaissant le seuil à 0,01. Or le jugement visuel trouvait des repères
+exploitables sur 47 % de ces images : l'information est présente, c'est le
+modèle qui ne sait pas l'extraire. Un affinage sur ce type de prise de vue
+devrait donc récupérer une bonne part de ces 47 %.
+
+## Ce que cela autorise à vendre aujourd'hui
+
+À 5 m d'erreur médiane sur un terrain de 105 m, les positions sont justes à une
+surface de réparation près. C'est assez pour situer le jeu par zones, pas pour
+annoncer la distance parcourue par un joueur.
+
+Ordre des corrections, par rapport coût/effet :
+1. Réentraîner en `yolov8x-pose` — quelques heures de GPU, aucune annotation.
+2. Affiner sur des images de caméra basse — c'est ce qui débloque le marché réel.

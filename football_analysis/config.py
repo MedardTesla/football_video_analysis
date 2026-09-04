@@ -63,7 +63,15 @@ class PitchConfig:
     """Détection des points clés du terrain (YOLOv8-pose, 32 keypoints)."""
 
     weights: Path = MODELS_DIR / "pitch_keypoints.pt"
+    # Confiance minimale d'un point clé pour servir à l'homographie.
     confidence: float = 0.5
+    # Confiance minimale de la boîte englobant le terrain, volontairement
+    # basse. Le modèle ne connaît qu'une classe : il n'y a pas de faux positif
+    # à craindre, et sa confiance de boîte s'effondre dès que le terrain est
+    # partiellement hors champ — mesuré entre 0,05 et 0,89 sur des images où
+    # les points clés restaient bons. Le seuil par défaut d'Ultralytics (0,25)
+    # jetait l'instance entière, points compris.
+    instance_confidence: float = 0.02
     # findHomography exige >= 4 correspondances ; on en demande plus pour
     # éviter les homographies dégénérées sur points quasi colinéaires.
     min_keypoints: int = 6

@@ -121,6 +121,10 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
 - **`sv.ByteTrack` est déprécié** (supprimé en supervision 0.31). On utilise le
   paquet `trackers`, avec BoT-SORT et compensation du mouvement caméra activée —
   sans CMC, un panoramique déplace toutes les boîtes et fait perdre les identités.
+- **La confiance de boîte du modèle de terrain n'est pas un indicateur de
+  qualité.** Elle varie de 0,05 à 0,89 sur des images où les points restent bons.
+  `instance_confidence` est donc à 0,02 et le filtrage se fait sur les points.
+  Le seuil par défaut d'Ultralytics divisait par deux le taux d'images exploitables.
 - **Le pipeline dégrade proprement.** Une frame sans keypoints exploitables réutilise
   la dernière homographie valide ; sans homographie du tout, la frame est annotée
   mais n'alimente ni le radar ni les statistiques spatiales. C'est le cas normal en

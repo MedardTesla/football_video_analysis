@@ -124,3 +124,20 @@ def test_sampling_stride_targets_the_requested_rate():
     assert sampling_stride(25.0, 50.0) == 1
     assert sampling_stride(25.0, None) == 1
     assert sampling_stride(25.0, 0) == 1
+
+
+def test_instance_threshold_is_far_below_the_default():
+    """La confiance de la boîte terrain n'est pas un indicateur de qualité.
+
+    Mesuré sur vidéo réelle : elle varie de 0,05 à 0,89 sur des images où les
+    points clés restaient bons. Le seuil par défaut d'Ultralytics (0,25)
+    jetait l'instance entière, points compris, et divisait par deux le taux
+    d'images exploitables. Le modèle ne connaît qu'une classe : il n'y a pas
+    de faux positif à craindre d'un seuil bas.
+    """
+    from football_analysis.config import PitchConfig
+
+    cfg = PitchConfig()
+    assert cfg.instance_confidence <= 0.05
+    # Le filtrage utile se fait sur les points, pas sur la boîte.
+    assert cfg.confidence > cfg.instance_confidence
