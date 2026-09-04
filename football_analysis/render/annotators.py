@@ -133,15 +133,29 @@ def draw_on_pitch(
     return pitch
 
 
-def overlay_radar(frame: np.ndarray, radar: np.ndarray, opacity: float = 0.75) -> np.ndarray:
-    """Incruste le radar en bas au centre de la frame."""
-    scale = (frame.shape[1] * 0.4) / radar.shape[1]
-    small = cv2.resize(radar, (int(radar.shape[1] * scale), int(radar.shape[0] * scale)))
-    h, w = small.shape[:2]
-    x = (frame.shape[1] - w) // 2
-    y = frame.shape[0] - h - 20
+def overlay_radar(
+    frame: np.ndarray,
+    radar: np.ndarray,
+    opacity: float = 0.75,
+    width_ratio: float = 0.26,
+    margin: int = 24,
+) -> np.ndarray:
+    """Incruste le radar en bas à droite.
+
+    Placé au centre et occupant 40 % de la largeur, il masquait le jeu :
+    l'entraîneur regarde la vidéo pour revoir une action, pas le radar. En bas
+    à droite et à 26 %, il reste lisible sans couvrir le centre du terrain,
+    où se trouve presque toujours le ballon.
+    """
+    echelle = (frame.shape[1] * width_ratio) / radar.shape[1]
+    petit = cv2.resize(
+        radar, (int(radar.shape[1] * echelle), int(radar.shape[0] * echelle))
+    )
+    h, w = petit.shape[:2]
+    x = frame.shape[1] - w - margin
+    y = frame.shape[0] - h - margin
     if y < 0 or x < 0:
         return frame
     region = frame[y : y + h, x : x + w]
-    cv2.addWeighted(small, opacity, region, 1 - opacity, 0, region)
+    cv2.addWeighted(petit, opacity, region, 1 - opacity, 0, region)
     return frame
