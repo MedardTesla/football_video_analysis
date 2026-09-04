@@ -16,7 +16,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import (
-    FileResponse, HTMLResponse, JSONResponse, RedirectResponse,
+    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse,
 )
 
 from .jobs import Club, Job, JobState, JobStore
@@ -27,8 +27,45 @@ from .storage import Storage, UploadRefuse
 from .web import pages
 
 app = FastAPI(title="Analyse de match", docs_url=None, redoc_url=None)
+
+
+@app.exception_handler(HTTPException)
+def erreur_lisible(request: Request, exc: HTTPException):
+    """Les erreurs s'adressent à un club, pas à un client d'API.
+
+    Une adresse mal recopiée renvoyait la réponse JSON brute de FastAPI, ce
+    qui donne l'impression d'un service en panne plutôt que d'un lien erroné.
+    """
+    return HTMLResponse(
+        pages.error_page(exc.status_code, str(exc.detail)),
+        status_code=exc.status_code,
+    )
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots() -> str:
+    """Aucune page ne doit être indexée : toutes portent un jeton d'accès."""
+    return "User-agent: *\nDisallow: /\n"
 store = JobStore(DATA_ROOT / "jobs.db")
 storage = Storage(DATA_ROOT / "videos")
+
+
+def _piece_jointe(nom: str) -> str:
+    """En-tête de téléchargement portant un nom de fichier accentué.
+
+    Les en-têtes HTTP sont en latin-1 : « Valmont – Beaupré » y lève une
+    erreur d'encodage et le téléchargement échoue. On donne donc une version
+    ASCII en repli et le vrai nom en RFC 5987, que tous les navigateurs
+    récents préfèrent.
+    """
+    from urllib.parse import quote
+
+    ascii_nom = "".join(c if c.isalnum() or c in " -_." else "_" for c in nom)
+    ascii_nom = ascii_nom.encode("ascii", "ignore").decode().strip() or "releve.csv"
+    return (
+        f'attachment; filename="{ascii_nom}"; '
+        f"filename*=UTF-8''{quote(nom, safe='')}"
+    )
 
 
 def _authenticate(job_id: str, token: str) -> Job:
@@ -217,6 +254,37 @@ async def enregistrer_noms(job_id: str, token: str, request: Request) -> Redirec
             names=store.get(job.id).player_names,
         )
     return RedirectResponse(f"{job.public_url}/rapport", status_code=303)
+
+
+@app.get("/m/{job_id}/{token}/releve.csv")
+def releve_csv(job_id: str, token: str) -> PlainTextResponse:
+    """Relevé des joueurs en tableur, pour les clubs qui tiennent leurs
+    propres statistiques."""
+    from .export import players_csv
+
+    job = _authenticate(job_id, token)
+    if job.state is not JobState.DONE or not job.stats:
+        raise HTTPException(status_code=409, detail="Analyse pas encore terminée.")
+
+    return PlainTextResponse(
+        players_csv(job.stats, job.player_names),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": _piece_jointe(f"{job.match_name}.csv")},
+    )
+
+
+@app.post("/m/{job_id}/{token}/supprimer")
+def supprimer(job_id: str, token: str) -> RedirectResponse:
+    """Efface un match et tous ses fichiers.
+
+    Un club se trompe de vidéo, ou souhaite retirer un match : sans cette
+    possibilité il faudrait nous écrire, et nous donner accès à sa base.
+    """
+    job = _authenticate(job_id, token)
+    club = store.get_club(job.club_id) if job.club_id else None
+    storage.purge(job.id)
+    store.delete(job.id)
+    return RedirectResponse(club.public_url if club else "/", status_code=303)
 
 
 @app.get("/m/{job_id}/{token}/video")

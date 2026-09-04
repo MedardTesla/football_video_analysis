@@ -112,6 +112,10 @@ def _document(titre: str, corps: str, tete: str = "") -> str:
     return f"""<!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Les adresses portent un jeton d'accès. Indexées, elles deviendraient
+     publiques : un club qui colle son lien sur un forum exposerait ses
+     rapports à quiconque cherche le nom de son club. -->
+<meta name="robots" content="noindex, nofollow">
 <title>{html.escape(titre)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -145,6 +149,41 @@ def _champs_formulaire(club: Club | None) -> str:
         f'  <input type="hidden" name="club_token" value="{html.escape(club.token)}">\n'
         f'  <input type="hidden" name="club" value="{html.escape(club.name)}">'
     )
+
+
+def error_page(code: int, message: str) -> str:
+    """Page d'erreur lisible par un club.
+
+    Sans elle, une adresse mal recopiée affiche la réponse JSON brute de
+    l'API — illisible, et qui donne l'impression d'un service en panne plutôt
+    que d'un lien erroné.
+    """
+    if code == 404:
+        titre, aide = "Page introuvable", (
+            "Le lien est peut-être incomplet : ces adresses sont longues et se "
+            "coupent souvent lorsqu'on les recopie à la main. Vérifiez-le, ou "
+            "reprenez celui reçu au dépôt."
+        )
+    elif code == 409:
+        titre, aide = "Analyse en cours", (
+            "Ce rapport n'est pas encore prêt. Ouvrez le lien de suivi pour "
+            "connaître l'avancement."
+        )
+    else:
+        titre, aide = "Une erreur est survenue", (
+            "Réessayez dans quelques instants. Si cela se reproduit, "
+            "signalez-le en indiquant l'adresse utilisée."
+        )
+
+    corps = f"""
+ <header>
+  <span class="eyebrow">Erreur {code}</span>
+  <h1>{titre}</h1>
+ </header>
+ <p class="lede">{html.escape(message)}</p>
+ <p class="lede">{aide}</p>
+ <div class="actions"><a class="secondaire" href="/">Déposer une vidéo</a></div>"""
+    return _document(titre, corps)
 
 
 def upload_form(erreur: str | None = None, club: Club | None = None) -> str:
@@ -427,7 +466,12 @@ def status_page(job: Job, en_attente: int) -> str:
    <a class="principal" href="{html.escape(job.public_url)}/rapport">Voir le rapport</a>
    <a class="secondaire" href="{html.escape(job.public_url)}/video">Vidéo annotée</a>
    <a class="secondaire" href="{html.escape(job.public_url)}/joueurs">Nommer les joueurs</a>
-  </div>"""
+   <a class="secondaire" href="{html.escape(job.public_url)}/releve.csv">Tableur</a>
+  </div>
+  <form method="post" action="{html.escape(job.public_url)}/supprimer"
+        onsubmit="return confirm('Supprimer ce match et son rapport ? Cette action est définitive.')">
+   <button class="discret" type="submit">Supprimer ce match</button>
+  </form>"""
     elif job.state is JobState.FAILED:
         detail = f"<p class='erreur'>{html.escape(job.error or 'Cause inconnue.')}</p>"
         actions = '<div class="actions"><a class="secondaire" href="/">Déposer à nouveau</a></div>'

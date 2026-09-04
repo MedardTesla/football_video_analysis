@@ -374,6 +374,11 @@ class JobStore:
                 (team, datetime.now(timezone.utc).isoformat(), job_id),
             )
 
+    def delete(self, job_id: str) -> None:
+        """Efface un match de la base. Les fichiers sont purgés à part."""
+        with self._connect() as db:
+            db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+
     def counts_by_state(self) -> dict[str, int]:
         with self._connect() as db:
             rows = db.execute(

@@ -103,7 +103,14 @@ parole : l'interface doit donc empêcher un club de se tromper.
   erreur de 5 m sur la position multiplie par seize la longueur d'un pas de
   course, quand elle ne décale le contrôle du terrain que de deux points.
 - **Les erreurs parlent au club, pas au développeur.** Jamais de « CUDA out of
-  memory » ni de chemin interne, toujours une cause et une action.
+  memory » ni de chemin interne, toujours une cause et une action. Une adresse
+  mal recopiée affiche une page, pas la réponse JSON de l'API — et suggère la
+  cause la plus fréquente, un lien coupé à la copie.
+- **Aucune page n'est indexable.** Les adresses portent un jeton d'accès :
+  indexées, elles deviendraient publiques. `noindex` sur chaque page et un
+  `robots.txt` qui interdit tout le site.
+- **Un match peut être supprimé** par le club lui-même, fichiers compris. Sans
+  ce bouton, une vidéo déposée par erreur imposerait de nous écrire.
 - **Une page en attente n'affiche pas de jauge à 0 %**, qui laisserait croire à
   un blocage alors que rien n'a commencé.
 
@@ -115,8 +122,8 @@ Assumé pour l'instant, à traiter quand un client le demandera :
   commerciale. Le service est fonctionnel, pas vendu.
 - **Aucune personnalisation par club.** Couleurs de maillot, noms des joueurs
   au lieu des numéros de piste, logo sur le rapport.
-- **Pas d'export vers un tableur**, pour les clubs qui tiennent déjà leurs
-  propres statistiques.
+- **Pas de facturation** : le service est gratuit et ouvert à quiconque a
+  l'adresse.
 
 ## Ordre proposé
 
@@ -124,4 +131,4 @@ Assumé pour l'instant, à traiter quand un client le demandera :
    alors que l'effectif change peu. Demande de relier les pistes entre matchs,
    ce que rien ne permet aujourd'hui.
 2. **Identité visuelle**, quand le produit aura un nom.
-3. **Export vers un tableur**, pour les clubs qui tiennent déjà des statistiques.
+3. **Facturation**, quand le modèle économique sera arrêté.
