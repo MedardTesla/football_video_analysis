@@ -55,7 +55,11 @@ input[type=url] {
   font:inherit; font-weight:400; padding:.65rem .75rem; border-radius:5px;
   border:1px solid var(--line); background:var(--surface); color:var(--ink); }
 input[type=file] { padding:.55rem; }
-input:focus-visible { outline:2px solid var(--turf); outline-offset:1px; }
+/* Sur les seuls champs, un utilisateur au clavier perd sa position dès
+   qu'il atteint un bouton ou un lien. */
+input:focus-visible, button:focus-visible, a:focus-visible,
+summary:focus-visible { outline:2px solid var(--turf); outline-offset:2px;
+                        border-radius:3px; }
 button { font:600 1rem/1 "IBM Plex Sans",sans-serif; padding:.85rem 1.2rem;
          border:none; border-radius:5px; background:var(--turf);
          color:var(--turf-ink); cursor:pointer; }
@@ -98,6 +102,77 @@ legend { font-size:.85rem; font-weight:600; padding:0 .4rem; }
               border:1px solid var(--line); }
 footer { color:var(--muted); font-size:.78rem; border-top:1px solid var(--line);
          padding-top:1rem; }
+
+/* --- tableaux (espace du club, nommage) ------------------------------- */
+.scroll { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:.92rem; }
+thead th { text-align:left; font-size:.72rem; text-transform:uppercase;
+           letter-spacing:.09em; color:var(--muted); padding:0 .5rem .55rem;
+           font-weight:600; }
+tbody td { padding:.6rem .5rem; border-top:1px solid var(--line);
+           vertical-align:middle; }
+tbody tr:first-child td { border-top:none; }
+td.date { color:var(--muted); font-variant-numeric:tabular-nums;
+          white-space:nowrap; }
+td.action { text-align:right; white-space:nowrap; }
+td.action a { color:var(--turf); font-weight:600; text-decoration:none; }
+td.action a:hover { text-decoration:underline; }
+td.jersey { font:600 1.2rem/1 "Barlow Condensed","Arial Narrow",sans-serif;
+            color:var(--muted); font-variant-numeric:tabular-nums; width:2.2rem; }
+td input[type=text] { width:100%; }
+tbody .pastille { display:inline-block; margin-right:.45rem; vertical-align:middle; }
+.muet { color:var(--muted); }
+
+/* --- désignation de l'équipe ------------------------------------------ */
+.equipes { display:flex; gap:.3rem; }
+.equipes form { display:inline; }
+button.equipe { font:600 .8rem/1 "IBM Plex Sans",sans-serif; padding:.35rem .6rem;
+                border:1px solid var(--line); border-radius:4px;
+                background:var(--ground); color:var(--muted); cursor:pointer; }
+button.equipe:hover { border-color:var(--turf); color:var(--ink); }
+button.equipe.actif { background:var(--turf); border-color:var(--turf);
+                      color:var(--turf-ink); }
+button.discret { background:none; border:none; color:var(--muted);
+                 font:400 .82rem/1 "IBM Plex Sans",sans-serif; padding:.4rem 0;
+                 cursor:pointer; text-decoration:underline; }
+button.discret:hover { color:var(--bad-ink); }
+
+/* --- tendance de saison ------------------------------------------------ */
+section.panel { display:flex; flex-direction:column; gap:.9rem; }
+section.panel h2 { font:600 .72rem/1 "IBM Plex Sans",sans-serif;
+                   letter-spacing:.14em; text-transform:uppercase;
+                   color:var(--muted); margin:0; }
+.courbe { margin:0; display:flex; flex-direction:column; gap:.4rem; }
+.courbe + .courbe { margin-top:1.2rem; }
+.courbe figcaption { font-size:.85rem; color:var(--muted); }
+.courbe figcaption b { color:var(--ink); font-size:1rem; }
+.courbe svg { width:100%; height:auto; display:block; }
+.courbe .mediane { stroke:var(--line); stroke-width:1; }
+.courbe .moyenne { stroke-width:1; stroke-dasharray:4 4; opacity:.55; }
+.courbe__legende { display:flex; justify-content:space-between;
+                   font-size:.75rem; color:var(--muted);
+                   font-variant-numeric:tabular-nums; }
+
+/* --- téléphone ---------------------------------------------------------
+   Sous 620 px, cinq colonnes imposent un défilement horizontal. Chaque
+   ligne devient une fiche, l'intitulé de colonne étant repris devant la
+   valeur — empilée, la ligne n'a plus d'en-tête pour se lire. */
+@media (max-width:620px) {
+  table, tbody, tr, td { display:block; width:100%; }
+  thead { position:absolute; width:1px; height:1px; overflow:hidden;
+          clip:rect(0 0 0 0); white-space:nowrap; }
+  tbody tr { border:1px solid var(--line); border-radius:6px;
+             padding:.7rem .85rem; margin-bottom:.7rem; }
+  tbody tr:first-child td { border-top:none; }
+  tbody td { border:none; padding:.28rem 0; display:flex;
+             justify-content:space-between; align-items:center; gap:1rem; }
+  tbody td::before { content:attr(data-champ); color:var(--muted);
+                     font-size:.75rem; text-transform:uppercase;
+                     letter-spacing:.07em; }
+  tbody td.titre { font-weight:600; padding-bottom:.5rem; }
+  tbody td.titre::before, tbody td.action::before { content:none; }
+  tbody td.action { justify-content:flex-end; padding-top:.5rem; }
+}
 @media (prefers-reduced-motion:reduce) { * { animation:none !important; } }
 """
 
@@ -148,7 +223,8 @@ def _champs_formulaire(club: Club | None) -> str:
     """
     if club is None:
         return """  <label>Club
-   <input type="text" name="club" required maxlength="80" placeholder="US Valmont">
+   <input type="text" name="club" required maxlength="80" placeholder="US Valmont"
+          autocomplete="organization">
   </label>"""
     return (
         f'  <input type="hidden" name="club_id" value="{html.escape(club.id)}">\n'
@@ -217,7 +293,8 @@ def upload_form(erreur: str | None = None, club: Club | None = None) -> str:
   <fieldset>
    <legend>La vidéo</legend>
    <label>Lien vers la vidéo
-    <input type="url" name="source_url" placeholder="https://www.youtube.com/watch?v=...">
+    <input type="url" name="source_url" inputmode="url"
+           placeholder="https://www.youtube.com/watch?v=...">
     <span class="hint">Le plus simple si votre match est déjà en ligne : le
     lien part en une seconde, nous téléchargeons depuis nos serveurs.</span>
    </label>
@@ -229,7 +306,8 @@ def upload_form(erreur: str | None = None, club: Club | None = None) -> str:
    </label>
   </fieldset>
   <label>Adresse e-mail <span class="option">facultatif</span>
-   <input type="email" name="contact" maxlength="120" placeholder="entraineur@club.fr">
+   <input type="email" name="contact" maxlength="120" placeholder="entraineur@club.fr"
+          autocomplete="email" inputmode="email">
    <span class="hint">Pour être prévenu quand le rapport est prêt. Le message
    contient le lien d'accès : vérifiez l'adresse, toute personne qui reçoit ce
    lien peut lire le rapport.</span>
@@ -250,12 +328,19 @@ def _selecteur_equipe(club: Club, job: Job) -> str:
     """
     boutons = []
     for equipe, libelle in ((0, "A"), (1, "B")):
-        actif = " actif" if job.our_team == equipe else ""
+        choisie = job.our_team == equipe
+        actif = " actif" if choisie else ""
+        # Un lecteur d'écran annoncerait « bouton A » : ni de quel match il
+        # s'agit, ni ce que le clic ferait.
+        titre = (f"{'Retirer' if choisie else 'Désigner'} l'équipe {libelle} "
+                 f"comme celle du club pour {job.match_name}")
         boutons.append(
             f'<form method="post" action="{html.escape(club.public_url)}'
             f'/match/{html.escape(job.id)}/equipe">'
             f'<input type="hidden" name="team" value="{equipe}">'
-            f'<button class="equipe{actif}" type="submit">{libelle}</button></form>'
+            f'<button class="equipe{actif}" type="submit"'
+            f' aria-pressed="{"true" if choisie else "false"}"'
+            f' aria-label="{html.escape(titre)}">{libelle}</button></form>'
         )
     return f'<div class="equipes">{"".join(boutons)}</div>'
 
@@ -356,10 +441,11 @@ def club_page(
                 action = f'<a href="{html.escape(m.public_url)}">Suivre</a>'
                 notre = '<span class="muet">—</span>'
             lignes.append(
-                f"<tr><td>{html.escape(m.match_name)}</td>"
-                f'<td class="date">{date}</td>'
-                f'<td><span class="pastille {classe}"></span>{libelle}</td>'
-                f"<td>{notre}</td>"
+                f'<tr><td data-champ="Match" class="titre">'
+                f"{html.escape(m.match_name)}</td>"
+                f'<td data-champ="Déposé" class="date">{date}</td>'
+                f'<td data-champ="État"><span class="pastille {classe}"></span>{libelle}</td>'
+                f'<td data-champ="Votre équipe">{notre}</td>'
                 f'<td class="action">{action}</td></tr>'
             )
         table = (
@@ -499,7 +585,10 @@ def status_page(job: Job, en_attente: int) -> str:
     elif job.state is JobState.PROCESSING:
         pourcent = int(job.progress * 100)
         detail = (
-            f'<div class="jauge"><span style="width:{pourcent}%"></span></div>'
+            f'<div class="jauge" role="progressbar" aria-valuemin="0"'
+            f' aria-valuemax="100" aria-valuenow="{pourcent}"'
+            f' aria-label="Avancement de l\'analyse">'
+            f'<span style="width:{pourcent}%"></span></div>'
             f"<p class='lede'>{pourcent} % analysé. Comptez environ une heure au total. "
             "Cette page se met à jour seule.</p>"
         )

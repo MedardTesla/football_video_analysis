@@ -84,13 +84,15 @@ def _players_block(players: list[dict], names: dict[str, str] | None = None) -> 
         rows.append(
             "<tr>"
             f'<td class="jersey">{identite}</td>'
-            f'<td class="team"><i class="dot" style="background:{colour}"></i>'
+            f'<td class="team" data-champ="Équipe">'
+            f'<i class="dot" style="background:{colour}"></i>'
             f'<span class="team__name">{label}</span></td>'
-            f'<td class="figure">{km:.1f}<abbr>km</abbr>'
+            f'<td class="figure" data-champ="Distance">{km:.1f}<abbr>km</abbr>'
             f'<i class="track"><b style="width:{player["distance_m"] / furthest * 100:.0f}%;'
             f'background:{colour}"></b></i></td>'
-            f'<td class="figure">{kmh:.1f}<abbr>km/h</abbr></td>'
-            f'<td class="figure minutes">{player["seconds_seen"] / 60:.0f}<abbr>min</abbr></td>'
+            f'<td class="figure" data-champ="Pointe">{kmh:.1f}<abbr>km/h</abbr></td>'
+            f'<td class="figure minutes" data-champ="Temps">'
+            f'{player["seconds_seen"] / 60:.0f}<abbr>min</abbr></td>'
             "</tr>"
         )
     return (
@@ -321,6 +323,32 @@ tbody tr:first-child td { border-top:none; }
 .empty { color:var(--muted); margin:0; font-size:.92rem; }
 footer { color:var(--muted); font-size:.78rem; padding:.5rem 0 2rem;
          border-top:1px solid var(--line); }
+
+/* La distance est la colonne qu'un entraîneur cherche en premier. */
+.players td.figure:nth-of-type(3) { font-weight:600; }
+
+a:focus-visible, button:focus-visible { outline:2px solid var(--turf);
+                                        outline-offset:2px; border-radius:3px; }
+
+/* Sous 620 px, cinq colonnes imposent un défilement horizontal. Chaque ligne
+   devient une fiche, l'intitulé de colonne repris devant la valeur — empilée,
+   la ligne n'a plus d'en-tête pour se lire. */
+@media (max-width:620px) {
+  .players, .players tbody, .players tr, .players td { display:block; width:100%; }
+  .players thead { position:absolute; width:1px; height:1px; overflow:hidden;
+                   clip:rect(0 0 0 0); }
+  .players tbody tr { border:1px solid var(--line); border-radius:6px;
+                      padding:.7rem .85rem; margin-bottom:.7rem; }
+  .players tbody tr:first-child td { border-top:none; }
+  .players tbody td { border:none; padding:.28rem 0; display:flex;
+                      justify-content:space-between; align-items:center; gap:1rem; }
+  .players tbody td::before { content:attr(data-champ); color:var(--muted);
+                              font-size:.75rem; text-transform:uppercase;
+                              letter-spacing:.07em; }
+  .players tbody td.jersey { padding-bottom:.5rem; }
+  .players tbody td.jersey::before { content:none; }
+  .players .track { min-width:4rem; }
+}
 
 @media print {
   body { background:#fff; padding:0; }
