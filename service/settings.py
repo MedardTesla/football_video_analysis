@@ -44,3 +44,9 @@ FILE_MAX_PAR_CLUB = 3
 # Plafond global de la file. Au-delà, le service refuse poliment plutôt que
 # d'accepter des matchs qu'il ne traitera pas avant des jours.
 FILE_MAX = 50
+
+
+# Jeton d'accès à la page d'exploitation. Vide, la page est inaccessible —
+# c'est le défaut : mieux vaut pas d'administration qu'une administration
+# ouverte à tous.
+ADMIN_TOKEN = os.environ.get("FA_ADMIN_TOKEN", "")

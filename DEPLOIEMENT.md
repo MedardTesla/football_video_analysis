@@ -37,6 +37,18 @@ constantes partagées, et le worker importe le pipeline tardivement. Sans cela,
 une simple constante lue par `/sante` imposait toute la pile de calcul à la
 machine qui sert le formulaire.
 
+## Exploitation
+
+```
+FA_ADMIN_TOKEN=une-chaîne-longue-et-imprévisible
+```
+
+Donne accès à `/admin/{ce jeton}` : liste des clubs, de leurs matchs et de
+leurs liens privés. Indispensable au support — un club qui perd son lien n'a
+sinon aucun recours.
+
+Sans cette variable, la page n'existe pas.
+
 ## Surveillance
 
 `/sante` répond **503** dès qu'un match reste bloqué plus de quinze minutes

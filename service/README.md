@@ -82,6 +82,20 @@ Le paramètre est dans `video/io.py` : `LARGEUR_LIVREE` et `CRF`. Monter la
 qualité à CRF 24 ou revenir en 1080p reste possible pour un client qui le
 demande, au prix du poids.
 
+## Page d'exploitation
+
+`/admin/{jeton}`, avec `FA_ADMIN_TOKEN` dans l'environnement. Sans ce jeton
+configuré, la page n'existe pas — mieux vaut pas d'administration qu'une
+administration ouverte à tous.
+
+Elle sert d'abord au **support** : un club qui perd son lien n'a aucun recours,
+et sans cette page il faudrait interroger la base à la main pour le lui
+renvoyer. Elle affiche donc les liens privés en clair, ce qu'aucun autre écran
+ne fait.
+
+On y voit aussi les échecs avec leur cause, et un avertissement si le worker
+est arrêté ou le disque plein.
+
 ## Journaux
 
 Les adresses portent le jeton d'accès. Le journal d'accès d'uvicorn les écrit

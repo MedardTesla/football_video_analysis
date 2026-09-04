@@ -408,6 +408,21 @@ class JobStore:
         with self._connect() as db:
             db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
 
+    def recent(self, limit: int = 100) -> list[Job]:
+        """Derniers matchs, tous clubs confondus. Pour l'exploitation."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [self._to_job(r) for r in rows]
+
+    def clubs(self, limit: int = 200) -> list[Club]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT * FROM clubs ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [Club(**dict(r)) for r in rows]
+
     def all_ids(self) -> set[str]:
         """Identifiants de tous les matchs connus, pour repérer les orphelins."""
         with self._connect() as db:

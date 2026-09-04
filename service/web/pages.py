@@ -233,6 +233,58 @@ def _champs_formulaire(club: Club | None) -> str:
     )
 
 
+def admin_page(clubs: list[Club], matchs: list[Job], sante: dict) -> str:
+    """Vue d'exploitation.
+
+    Sert d'abord au support : un club qui perd son lien n'a aucun recours, et
+    sans cette page il faudrait interroger la base à la main pour le lui
+    renvoyer. Les jetons y figurent donc en clair — c'est le seul écran du
+    service où c'est le cas, et il est protégé par un jeton distinct.
+    """
+    par_club: dict[str, list[Job]] = {}
+    for m in matchs:
+        par_club.setdefault(m.club_id, []).append(m)
+
+    blocs = []
+    for club in clubs:
+        siens = par_club.get(club.id, [])
+        lignes = "".join(
+            f'<tr><td data-champ="Match">{html.escape(m.match_name)}</td>'
+            f'<td data-champ="Déposé" class="date">{m.created_at[:10]}</td>'
+            f'<td data-champ="État"><span class="pastille {LIBELLES[m.state][1]}"></span>'
+            f'{ETIQUETTES_COURTES[m.state]}</td>'
+            f'<td data-champ="Erreur" class="date">{html.escape(m.error or "—")}</td>'
+            f'<td class="action"><a href="{html.escape(m.public_url)}">ouvrir</a></td></tr>'
+            for m in siens
+        ) or '<tr><td colspan="5" class="muet">aucun match</td></tr>'
+        blocs.append(f"""<section class="panel">
+  <h2>{html.escape(club.name)} — {len(siens)} match(s)</h2>
+  <p class="lien">{html.escape(club.public_url)}</p>
+  <div class="scroll"><table><thead><tr><th>Match</th><th>Déposé</th>
+   <th>État</th><th>Erreur</th><th></th></tr></thead>
+   <tbody>{lignes}</tbody></table></div>
+ </section>""")
+
+    alerte = ""
+    if sante.get("bloques"):
+        alerte = (f'<p class="erreur">{sante["bloques"]} match(s) bloqué(s) : '
+                  "le worker est probablement arrêté.</p>")
+    elif sante.get("sature"):
+        alerte = '<p class="erreur">Disque presque plein : les dépôts sont refusés.</p>'
+
+    corps = f"""
+ <header>
+  <span class="eyebrow">Exploitation</span>
+  <h1>{len(clubs)} clubs, {len(matchs)} matchs</h1>
+  <div class="meta">file : {sante.get('en_attente', 0)} en attente ·
+   disque libre : {sante.get('disque_libre_go', 0)} Go</div>
+ </header>
+ {alerte}
+ {"".join(blocs) or "<p class='lede'>Aucun club pour l'instant.</p>"}
+ <footer>Cette page montre les liens privés des clubs. Ne pas la partager.</footer>"""
+    return _document("Exploitation", corps)
+
+
 def error_page(code: int, message: str) -> str:
     """Page d'erreur lisible par un club.
 

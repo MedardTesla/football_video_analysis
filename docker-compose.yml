@@ -18,6 +18,8 @@ services:
       - donnees:/data
     environment:
       FA_DATA_ROOT: /data
+      # Sans ce jeton, la page d'exploitation n'existe pas.
+      FA_ADMIN_TOKEN: ${FA_ADMIN_TOKEN:-}
 
   worker:
     build:
