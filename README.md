@@ -83,6 +83,7 @@ training/            notebooks d'entraînement des deux modèles
 tests/               173 tests
 ```
 
+`INTERFACE.md` décrit la forme du produit, ses écrans et son système visuel.
 `CLAUDE.md` documente les décisions non évidentes et les pièges rencontrés.
 `ANALYSE_TERRAIN.md` contient les mesures faites sur vidéos réelles.
 `ROADMAP.md` liste ce qui reste, dont les questions de licence à trancher
