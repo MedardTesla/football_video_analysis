@@ -50,7 +50,8 @@ p { margin:0; }
 form { display:flex; flex-direction:column; gap:1.1rem; }
 label { display:flex; flex-direction:column; gap:.35rem; font-size:.85rem;
         font-weight:600; }
-input[type=text], input[type=file] {
+input[type=text], input[type=file], input[type=email], input[type=date],
+input[type=url] {
   font:inherit; font-weight:400; padding:.65rem .75rem; border-radius:5px;
   border:1px solid var(--line); background:var(--surface); color:var(--ink); }
 input[type=file] { padding:.55rem; }
@@ -60,6 +61,11 @@ button { font:600 1rem/1 "IBM Plex Sans",sans-serif; padding:.85rem 1.2rem;
          color:var(--turf-ink); cursor:pointer; }
 button:hover { filter:brightness(1.08); }
 .hint { font-size:.8rem; color:var(--muted); font-weight:400; }
+fieldset { border:1px solid var(--line); border-radius:6px; padding:1rem 1.1rem;
+           margin:0; display:flex; flex-direction:column; gap:.9rem; }
+legend { font-size:.85rem; font-weight:600; padding:0 .4rem; }
+.ou { text-align:center; font-size:.78rem; color:var(--muted);
+      text-transform:uppercase; letter-spacing:.1em; }
 .option { font-weight:400; font-size:.75rem; color:var(--muted);
           text-transform:uppercase; letter-spacing:.06em; margin-left:.4rem; }
 .panel { background:var(--surface); border:1px solid var(--line);
@@ -203,10 +209,25 @@ def upload_form(erreur: str | None = None, club: Club | None = None) -> str:
    <input type="text" name="match_name" required maxlength="120"
           placeholder="US Valmont – AS Beaupré, 30 août">
   </label>
-  <label>Vidéo
-   <input type="file" name="video" accept="video/*" required>
-   <span class="hint">MP4, MOV, AVI ou MKV. 8 Go maximum, soit environ 2 h en 1080p.</span>
+  <label>Date du match <span class="option">facultatif</span>
+   <input type="date" name="played_on" max="2100-12-31">
+   <span class="hint">Celle de la rencontre, pas celle du dépôt. Laissée vide,
+   aucune date n'apparaît sur le rapport.</span>
   </label>
+  <fieldset>
+   <legend>La vidéo</legend>
+   <label>Lien vers la vidéo
+    <input type="url" name="source_url" placeholder="https://www.youtube.com/watch?v=...">
+    <span class="hint">Le plus simple si votre match est déjà en ligne : le
+    lien part en une seconde, nous téléchargeons depuis nos serveurs.</span>
+   </label>
+   <p class="ou">ou</p>
+   <label>Fichier vidéo
+    <input type="file" name="video" accept="video/*">
+    <span class="hint">MP4, MOV, AVI ou MKV. 8 Go maximum, soit environ 2 h en
+    1080p. Comptez du temps sur une connexion mobile.</span>
+   </label>
+  </fieldset>
   <label>Adresse e-mail <span class="option">facultatif</span>
    <input type="email" name="contact" maxlength="120" placeholder="entraineur@club.fr">
    <span class="hint">Pour être prévenu quand le rapport est prêt. Le message

@@ -15,6 +15,10 @@ scikit-learn>=1.5.0
 # vidéo pèse neuf fois plus lourd — 3,3 Go au lieu de 0,38 Go par match.
 imageio-ffmpeg>=0.5.1
 
+# Récupération d'une vidéo par lien : un match de plusieurs gigaoctets ne se
+# téléverse pas depuis une connexion mobile. Worker uniquement.
+yt-dlp>=2024.8.6
+
 # Utilitaires
 tqdm>=4.66.0
 pydantic>=2.8.0

@@ -58,6 +58,14 @@ class Job:
     video_path: str
     club_id: str = ""
     contact: str = ""
+    # Date de la rencontre, saisie par le club. Distincte de la date
+    # d'analyse : un club dépose souvent un match joué des semaines plus tôt,
+    # et afficher la seconde à la place de la première est un contresens.
+    played_on: str = ""
+    # Lien fourni au lieu d'un téléversement. La vidéo est récupérée par le
+    # worker : un match de plusieurs gigaoctets ne se téléverse pas depuis une
+    # connexion mobile, alors qu'un lien s'envoie en une seconde.
+    source_url: str = ""
     # Laquelle des deux équipes du rapport est celle du club. Les libellés
     # « équipe A » et « équipe B » sont des étiquettes de regroupement, pas
     # des identités : rien ne garantit que l'équipe A d'un match soit la même
@@ -103,6 +111,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     video_path TEXT NOT NULL,
     club_id TEXT NOT NULL DEFAULT '',
     contact TEXT NOT NULL DEFAULT '',
+    played_on TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
     our_team INTEGER,
     player_names TEXT,
     state TEXT NOT NULL,
@@ -149,6 +159,12 @@ class JobStore:
             db.execute("ALTER TABLE jobs ADD COLUMN our_team INTEGER")
         if "player_names" not in existantes:
             db.execute("ALTER TABLE jobs ADD COLUMN player_names TEXT")
+        if "played_on" not in existantes:
+            db.execute("ALTER TABLE jobs ADD COLUMN played_on TEXT NOT NULL DEFAULT ''")
+        if "source_url" not in existantes:
+            db.execute(
+                "ALTER TABLE jobs ADD COLUMN source_url TEXT NOT NULL DEFAULT ''"
+            )
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=30)
@@ -192,7 +208,7 @@ class JobStore:
 
     def create(
         self, club: str, match_name: str, video_path: str, contact: str = "",
-        club_id: str = "",
+        club_id: str = "", played_on: str = "", source_url: str = "",
     ) -> Job:
         job = Job(
             id=secrets.token_hex(8),
@@ -202,15 +218,17 @@ class JobStore:
             video_path=str(video_path),
             contact=contact,
             club_id=club_id,
+            played_on=played_on,
+            source_url=source_url,
         )
         with self._connect() as db:
             db.execute(
                 "INSERT INTO jobs (id, token, club, match_name, video_path, club_id,"
-                " contact, state, progress, created_at, updated_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                " contact, played_on, source_url, state, progress, created_at,"
+                " updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (job.id, job.token, job.club, job.match_name, job.video_path,
-                 job.club_id, job.contact, job.state.value, job.progress,
-                 job.created_at, job.updated_at),
+                 job.club_id, job.contact, job.played_on, job.source_url,
+                 job.state.value, job.progress, job.created_at, job.updated_at),
             )
         return job
 

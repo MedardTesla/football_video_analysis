@@ -263,3 +263,35 @@ def test_the_notification_points_to_the_club_space(contexte, tmp_path):
                    run=_pipeline_reussi(tmp_path), notifier=espion)
 
     assert club.public_url in espion.envoyes[0].corps
+
+
+def test_a_linked_video_is_fetched_before_analysis(contexte, tmp_path, monkeypatch):
+    store, storage, _, _ = contexte
+    job = store.create("Club", "Match", video_path="",
+                       source_url="https://video.club.fr/v.mp4")
+
+    telechargee = tmp_path / "recuperee.mp4"
+    telechargee.write_bytes(b"video")
+    monkeypatch.setattr(worker, "telecharger", lambda lien, dest: telechargee)
+
+    worker.process(job.id, store, storage, Config(), run=_pipeline_reussi(tmp_path))
+    assert store.get(job.id).state is JobState.DONE
+
+
+def test_a_broken_link_is_explained_to_the_club(contexte, tmp_path, monkeypatch):
+    from service.fetch import LienRefuse
+
+    store, storage, _, _ = contexte
+    job = store.create("Club", "Match", video_path="",
+                       source_url="https://video.club.fr/v.mp4")
+
+    def echoue(lien, dest):
+        raise LienRefuse("La vidéo n'a pas pu être récupérée. Vérifiez que le "
+                         "lien est public.")
+
+    monkeypatch.setattr(worker, "telecharger", echoue)
+    worker.process(job.id, store, storage, Config(), run=_pipeline_reussi(tmp_path))
+
+    fini = store.get(job.id)
+    assert fini.state is JobState.FAILED
+    assert "lien est public" in fini.error

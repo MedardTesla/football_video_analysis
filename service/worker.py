@@ -17,6 +17,7 @@ from football_analysis.config import Config
 from football_analysis.report import ReportMeta, write as write_report
 
 from .jobs import Job, JobState, JobStore
+from .fetch import LienRefuse, telecharger
 from .notify import LogNotifier, Notifier, analysis_failed, report_ready
 from .settings import BASE_URL, STALE_SECONDS
 from .storage import Storage
@@ -34,6 +35,14 @@ def _load_pipeline() -> Callable:
     from football_analysis.pipeline import run
 
     return run
+
+
+def _date_du_match(job: Job) -> date | None:
+    """Date saisie par le club, ou rien. Jamais celle de l'analyse."""
+    try:
+        return date.fromisoformat(job.played_on) if job.played_on else None
+    except ValueError:
+        return None
 
 
 def _prevenir(job: Job, notifier: Notifier, message) -> None:
@@ -84,6 +93,15 @@ def process(
             store.update(job.id, progress=round(fraction, 3))
 
     try:
+        # Récupérer la vidéo si le club a donné un lien plutôt qu'un fichier.
+        # Fait ici et non au dépôt : le téléchargement peut durer, et bloquer
+        # une requête HTTP pendant ce temps la ferait expirer.
+        if job.source_url and not job.video_path:
+            log.info("téléchargement de la source du match %s", job.id)
+            chemin = telecharger(job.source_url, dossier / "source")
+            store.update(job.id, video_path=str(chemin))
+            job.video_path = str(chemin)
+
         resultat = run(
             job.video_path,
             dossier / "analyse.mp4",
@@ -93,7 +111,9 @@ def process(
         rapport = write_report(
             resultat.stats_path,
             dossier / "rapport.html",
-            ReportMeta(match_name=job.match_name, played_on=date.today()),
+            # Pas de date par défaut : afficher celle de l'analyse à la place
+            # de celle du match serait un contresens sur le livrable.
+            ReportMeta(match_name=job.match_name, played_on=_date_du_match(job)),
             radar_png=resultat.radar_path,
         )
         store.update(
@@ -127,6 +147,8 @@ def process(
 def _message_lisible(erreur: Exception) -> str:
     """Traduit une exception technique en cause actionnable pour le club."""
     texte = str(erreur)
+    if isinstance(erreur, LienRefuse):
+        return texte
     if isinstance(erreur, FileNotFoundError) and "poids" in texte:
         return "Service momentanément indisponible : modèle d'analyse absent."
     if "vidéo illisible" in texte:

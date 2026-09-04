@@ -180,3 +180,127 @@ def test_a_conflict_explains_the_analysis_is_running(client):
     reponse = tc.get(f"{job.public_url}/rapport")
     assert reponse.status_code == 409
     assert "Analyse en cours" in reponse.text
+
+
+# --- date du match -----------------------------------------------------------
+
+def test_the_report_shows_the_match_date_not_the_analysis_date(client):
+    """Un club dépose souvent un match joué des semaines plus tôt."""
+    tc, api = client
+    tc.post("/matches",
+            data={"club": "US Valmont", "match_name": "Match",
+                  "played_on": "2026-08-30"},
+            files={"video": ("m.mp4", b"x" * 500, "video/mp4")})
+    assert api.store.list_for_club("US Valmont")[0].played_on == "2026-08-30"
+
+
+def test_an_unreadable_date_is_ignored_not_refused(client):
+    """Bloquer un dépôt de 2 Go pour un champ accessoire serait absurde."""
+    tc, api = client
+    reponse = tc.post("/matches",
+        data={"club": "US Valmont", "match_name": "Match", "played_on": "hier"},
+        files={"video": ("m.mp4", b"x" * 500, "video/mp4")})
+    assert reponse.status_code == 201
+    assert api.store.list_for_club("US Valmont")[0].played_on == ""
+
+
+def test_no_date_means_no_date_shown():
+    """Mieux vaut aucune date qu'une date fausse."""
+    from football_analysis.report import ReportMeta, render
+
+    page = render({"players": [], "possession": {}}, ReportMeta("Match"))
+    assert "/2026" not in page and "/2025" not in page
+
+
+def test_the_worker_reads_the_stored_date():
+    from datetime import date
+
+    from service.jobs import Job
+    from service.worker import _date_du_match
+
+    modele = dict(id="a", token="t", club="C", match_name="M", video_path="/v.mp4")
+    assert _date_du_match(Job(**modele, played_on="2026-08-30")) == date(2026, 8, 30)
+    assert _date_du_match(Job(**modele, played_on="")) is None
+    assert _date_du_match(Job(**modele, played_on="pas-une-date")) is None
+
+
+def test_the_form_offers_the_match_date(client):
+    tc, _ = client
+    page = tc.get("/").text
+    assert 'name="played_on"' in page
+    assert "pas celle du dépôt" in page
+
+
+# --- dépôt par lien ----------------------------------------------------------
+
+@pytest.fixture
+def dns_public(monkeypatch):
+    import socket
+
+    import service.fetch as fetch
+
+    monkeypatch.setattr(
+        fetch.socket, "getaddrinfo",
+        lambda h, *a, **k: [(socket.AF_INET, None, None, "", ("93.184.216.34", 0))],
+    )
+
+
+def test_a_link_is_accepted_instead_of_a_file(client, dns_public):
+    """Un match de plusieurs gigaoctets ne se téléverse pas depuis une
+    connexion mobile ; un lien part en une seconde."""
+    tc, api = client
+    reponse = tc.post("/matches", data={
+        "club": "US Valmont", "match_name": "Match",
+        "source_url": "https://www.youtube.com/watch?v=abc",
+    })
+    assert reponse.status_code == 201
+    job = api.store.list_for_club("US Valmont")[0]
+    assert job.source_url.endswith("v=abc")
+    assert job.video_path == ""
+    assert job.state is JobState.QUEUED
+
+
+def test_neither_link_nor_file_is_refused(client):
+    tc, _ = client
+    reponse = tc.post("/matches", data={"club": "US Valmont", "match_name": "M"})
+    assert reponse.status_code == 400
+    assert "lien vers la vidéo" in reponse.text
+
+
+def test_an_internal_link_is_refused_at_deposit(client, monkeypatch):
+    """Refuser à la réception, pas après un téléversement : le club doit
+    savoir tout de suite."""
+    import socket
+
+    import service.fetch as fetch
+
+    monkeypatch.setattr(
+        fetch.socket, "getaddrinfo",
+        lambda h, *a, **k: [(socket.AF_INET, None, None, "", ("169.254.169.254", 0))],
+    )
+    tc, api = client
+    reponse = tc.post("/matches", data={
+        "club": "US Valmont", "match_name": "M",
+        "source_url": "https://innocent.fr/v.mp4",
+    })
+    assert reponse.status_code == 400
+    assert "accessible" in reponse.text
+    assert api.store.list_for_club("US Valmont") == []
+
+
+def test_a_file_wins_over_a_link(client, dns_public):
+    """Les deux fournis : le fichier est déjà là, inutile de télécharger."""
+    tc, api = client
+    tc.post("/matches",
+            data={"club": "US Valmont", "match_name": "M",
+                  "source_url": "https://exemple.fr/v.mp4"},
+            files={"video": ("m.mp4", b"x" * 500, "video/mp4")})
+    job = api.store.list_for_club("US Valmont")[0]
+    assert job.video_path and not job.source_url
+
+
+def test_the_form_offers_both_ways(client):
+    tc, _ = client
+    page = tc.get("/").text
+    assert 'name="source_url"' in page and 'name="video"' in page
+    assert "déjà en ligne" in page

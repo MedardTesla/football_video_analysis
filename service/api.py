@@ -22,6 +22,7 @@ from fastapi.responses import (
 )
 
 from .jobs import Club, Job, JobState, JobStore
+from .fetch import LienRefuse, valider as valider_lien
 from .notify import looks_like_email
 from . import season as saison_mod
 from .settings import DATA_ROOT, STALE_SECONDS
@@ -141,6 +142,8 @@ async def deposer(
     club_id: str = Form(""),
     club_token: str = Form(""),
     contact: str = Form(""),
+    played_on: str = Form(""),
+    source_url: str = Form(""),
     video: UploadFile = None,
 ) -> HTMLResponse:
     # Un dépôt venant d'un espace de club porte son jeton ; sinon un nouvel
@@ -159,9 +162,24 @@ async def deposer(
     if not club.strip():
         return HTMLResponse(pages.upload_form(erreur="Nom du club manquant."), 400)
 
-    if video is None or not video.filename:
+    # Le lien est validé tout de suite : refuser après un téléversement de
+    # plusieurs gigaoctets serait cruel, et le club ne saurait pas pourquoi.
+    source_url = source_url.strip()
+    if source_url:
+        try:
+            source_url = valider_lien(source_url)
+        except LienRefuse as refus:
+            return HTMLResponse(
+                pages.upload_form(erreur=str(refus), club=espace), 400
+            )
+
+    fichier_fourni = video is not None and bool(video.filename)
+    if not fichier_fourni and not source_url:
         return HTMLResponse(
-            pages.upload_form(erreur="Aucune vidéo sélectionnée.", club=espace), 400
+            pages.upload_form(
+                erreur="Indiquez un lien vers la vidéo, ou choisissez un fichier.",
+                club=espace,
+            ), 400,
         )
 
     # Une adresse invalide est refusée plutôt qu'ignorée : le club croirait
@@ -173,21 +191,32 @@ async def deposer(
             400,
         )
 
+    # Une date illisible est ignorée plutôt que refusée : elle est facultative,
+    # et bloquer un dépôt de 2 Go pour un champ accessoire serait absurde.
+    from datetime import date as _date
+
+    played_on = played_on.strip()
+    try:
+        _date.fromisoformat(played_on) if played_on else None
+    except ValueError:
+        played_on = ""
+
     if espace is None:
         espace = store.create_club(club.strip())
 
     job = store.create(
         espace.name, match_name.strip(), video_path="",
-        contact=contact, club_id=espace.id,
+        contact=contact, club_id=espace.id, played_on=played_on,
+        source_url="" if fichier_fourni else source_url,
     )
-    try:
-        chemin = storage.save_upload(job.id, video.filename, video.file)
-    except UploadRefuse as refus:
-        store.update(job.id, state=JobState.FAILED, error=str(refus))
-        return HTMLResponse(pages.upload_form(erreur=str(refus), club=espace), 400)
-
-    store.update(job.id, video_path=str(chemin))
-    job.video_path = str(chemin)
+    if fichier_fourni:
+        try:
+            chemin = storage.save_upload(job.id, video.filename, video.file)
+        except UploadRefuse as refus:
+            store.update(job.id, state=JobState.FAILED, error=str(refus))
+            return HTMLResponse(pages.upload_form(erreur=str(refus), club=espace), 400)
+        store.update(job.id, video_path=str(chemin))
+        job.video_path = str(chemin)
     return HTMLResponse(pages.upload_done(job, store.pending_count(), espace), 201)
 
 
@@ -233,9 +262,9 @@ async def enregistrer_noms(job_id: str, token: str, request: Request) -> Redirec
     régénération est peu coûteuse — elle ne relit que les statistiques, jamais
     la vidéo.
     """
-    from datetime import date
-
     from football_analysis.report import ReportMeta, write as write_report
+
+    from .worker import _date_du_match
 
     job = _authenticate(job_id, token)
     if job.state is not JobState.DONE or not job.report_path:
@@ -254,7 +283,7 @@ async def enregistrer_noms(job_id: str, token: str, request: Request) -> Redirec
     if stats_path.exists():
         write_report(
             stats_path, chemin,
-            ReportMeta(match_name=job.match_name, played_on=date.today()),
+            ReportMeta(match_name=job.match_name, played_on=_date_du_match(job)),
             radar_png=chemin.with_name("analyse_radar.png"),
             names=store.get(job.id).player_names,
         )

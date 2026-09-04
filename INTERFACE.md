@@ -22,7 +22,7 @@ calcul : elle ne serait qu'une autre façon d'atteindre le même service.
 
 | Écran | Adresse | Rôle |
 |---|---|---|
-| Dépôt | `/` | club, match, vidéo, e-mail facultatif |
+| Dépôt | `/` | club, match, date, vidéo ou lien, e-mail |
 | Confirmation | après envoi | montre le lien privé, rappelle de le garder |
 | Suivi | `/m/{id}/{jeton}` | état, jauge de progression, mise à jour seule |
 | Rapport | `/m/{id}/{jeton}/rapport` | le livrable, chiffres et vue tactique |
@@ -79,6 +79,25 @@ seul moyen de corriger une erreur.
 Les distances individuelles ne sont pas agrégées : à la précision actuelle,
 leur imprécision se cumulerait au lieu de se compenser.
 
+## Déposer par lien plutôt que par fichier
+
+Un match de 90 minutes pèse plusieurs gigaoctets. Le téléverser depuis une
+connexion mobile — la norme du marché visé — prend des heures et échoue à la
+moindre coupure, sans reprise possible.
+
+Beaucoup de clubs publient déjà leurs matchs sur une plateforme vidéo. Le
+formulaire accepte donc un lien : il part en une seconde, et le téléchargement
+se fait depuis nos serveurs, sur une liaison stable.
+
+Le téléchargement a lieu dans le worker et non au dépôt : il peut durer, et
+bloquer une requête HTTP pendant ce temps la ferait expirer.
+
+Comme c'est le service qui télécharge, c'est le service qu'on peut faire
+pointer n'importe où. L'adresse est donc résolue et vérifiée avant tout
+téléchargement : un lien vers `169.254.169.254` exposerait les identifiants
+d'accès de la machine chez la plupart des hébergeurs. C'est l'adresse obtenue
+qui décide, pas le nom — un nom public peut pointer vers le réseau interne.
+
 ## Les noms de joueurs
 
 Les numéros affichés viennent du traqueur et ne correspondent pas aux
@@ -97,6 +116,10 @@ annotée, et le club doit pouvoir faire le lien.
 L'enjeu n'est pas décoratif. Un rapport d'analyse automatique est cru sur
 parole : l'interface doit donc empêcher un club de se tromper.
 
+- **La date affichée est celle du match**, saisie par le club, jamais celle de
+  l'analyse. Un club dépose souvent une rencontre jouée des semaines plus tôt,
+  et le rapport affichait la date du jour. Sans saisie, aucune date n'est
+  montrée : mieux vaut rien qu'une date fausse.
 - **La couverture s'affiche avant les chiffres.** Un entraîneur doit savoir sur
   quelle part du match ils portent avant de les lire, pas après.
 - **Les distances sont annoncées comme des ordres de grandeur.** Mesuré : une
