@@ -69,3 +69,17 @@ def test_distant_ball_belongs_to_nobody():
     players = np.array([[100.0, 100.0]])
     teams = np.array([0])
     assert nearest_player_team(np.array([9000.0, 5000.0]), players, teams) is None
+
+
+def test_an_untracked_detection_is_refused_as_an_identity():
+    """Le bug constaté sur la première analyse réelle.
+
+    BoT-SORT rend -1 pour une détection non confirmée. Les accepter
+    fusionnait tous les joueurs non suivis en une identité unique, qui
+    cumulait leurs distances : sur un extrait de 24 secondes, elle affichait
+    123,5 secondes de présence et la plus grande distance du match.
+    """
+    stats = MatchStats(fps=25.0)
+    with pytest.raises(ValueError, match="non suivies"):
+        stats.update_player(-1, np.array([0.0, 0.0]), team=0)
+    assert stats.players == {}

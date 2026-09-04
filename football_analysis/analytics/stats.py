@@ -38,7 +38,18 @@ class MatchStats:
     _last_xy: dict[int, np.ndarray] = field(default_factory=dict, repr=False)
 
     def update_player(self, track_id: int, xy: np.ndarray, team: int | None) -> None:
-        """`xy` : position terrain en cm."""
+        """`xy` : position terrain en cm.
+
+        Un identifiant négatif signale une détection non associée par le
+        traqueur. L'accepter fusionnerait tous les joueurs non suivis en une
+        identité unique, qui cumulerait leurs distances et paraîtrait vue plus
+        longtemps que ne dure le match.
+        """
+        if track_id < 0:
+            raise ValueError(
+                f"identifiant de piste invalide : {track_id}. "
+                "Filtrer les détections non suivies avant d'accumuler."
+            )
         stats = self.players.setdefault(track_id, PlayerStats(track_id=track_id))
         stats.frames_seen += 1
         if team is not None:

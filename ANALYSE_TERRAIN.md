@@ -332,3 +332,42 @@ annoncer la distance parcourue par un joueur.
 Ordre des corrections, par rapport coût/effet :
 1. Réentraîner en `yolov8x-pose` — quelques heures de GPU, aucune annotation.
 2. Affiner sur des images de caméra basse — c'est ce qui débloque le marché réel.
+
+
+---
+
+# Première exécution complète sur vidéo réelle
+
+Extrait de 24 s du match Djoliba, modèle de points clés réel, détecteur COCO
+générique en remplacement du modèle spécialisé absent.
+
+## Cadence d'échantillonnage : mesurée
+
+Le nombre d'identités produites par le traqueur sur un même extrait, la
+détection étant calculée une fois puis rejouée à différentes cadences :
+
+| Cadence | Identités | Vues > 3 s | Fragments < 1 s |
+|---|---|---|---|
+| 25 fps | 15 | 11 | 3 |
+| **12,5 fps** | **14** | **11** | **2** |
+| 5 fps | 20 | 13 | 7 |
+| 2 fps | 22 | 10 | 7 |
+
+Passer de 25 à 12,5 fps ne coûte rien — le résultat est même marginalement
+meilleur. En dessous de 5 fps la fragmentation grimpe nettement. Le défaut
+passe donc à 12 fps : c'est la moitié du coût GPU d'un traitement à 25 fps,
+sans perte.
+
+Cela confirme le raisonnement établi plus tôt : la précision de distance
+autoriserait 2 fps, c'est le suivi qui fixe le plancher.
+
+## Un bug que seule l'exécution réelle pouvait révéler
+
+BoT-SORT rend l'identifiant `-1` tant qu'une piste n'est pas confirmée. Le
+pipeline les comptait comme un joueur : **toutes les détections non associées
+fusionnaient en une identité unique**. Sur 24 secondes d'extrait, elle
+affichait 123,5 secondes de présence et la plus grande distance du match.
+
+Le rapport aurait donc présenté au club un « meilleur coureur » entièrement
+fictif. `MatchStats.update_player` refuse maintenant les identifiants négatifs,
+et le pipeline filtre avec `is_tracked` avant d'accumuler.

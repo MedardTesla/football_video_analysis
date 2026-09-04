@@ -80,8 +80,9 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
 
 - **Tout est en flux.** `video/io.py` expose des générateurs. Le prototype chargeait
   la vidéo entière en mémoire, ce qui plafonnait la durée traitable.
-- **Le pipeline sous-échantillonne** à `ProcessingConfig.sample_fps` (10 fps par
-  défaut). Mesuré : à 11 km parcourus par match, descendre de 25 à 5 fps ne
+- **Le pipeline sous-échantillonne** à `ProcessingConfig.sample_fps` (12 fps,
+  mesuré sur extrait réel : 15 identités à 25 fps, 14 à 12,5, puis 20 à 5 et 22
+  à 2 — descendre fragmente les pistes sans économie proportionnelle). Mesuré : à 11 km parcourus par match, descendre de 25 à 5 fps ne
   sous-estime la distance que de 0,3 %. Ce n'est pas la mesure qui fixe cette
   cadence mais le suivi, qui a besoin de recouvrement entre images. Deux
   conséquences faciles à manquer : la vidéo annotée s'écrit à la cadence réduite
@@ -103,6 +104,12 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
   sont assignés de force à une équipe — vérifié sur match réel. Un rejet par
   distance au centroïde a été essayé avant et n'écartait rien : présents à
   l'ajustement, les arbitres tombent dans la dispersion normale.
+- **Une détection sans identifiant de piste ne fait pas une identité.** BoT-SORT
+  rend -1 tant qu'une piste n'est pas confirmée ; `MatchStats.update_player`
+  refuse désormais les identifiants négatifs. Les accepter fusionnait tous les
+  joueurs non suivis en une identité unique, cumulant leurs distances : sur un
+  extrait de 24 s elle affichait 123,5 s de présence et la plus grande distance
+  du match. Filtrer avec `tracking.tracker.is_tracked`.
 - **`UNASSIGNED` vaut -1, ne jamais l'utiliser comme index.** `-1 % 2` vaut 1 en
   Python : un joueur non attribué serait peint aux couleurs de l'équipe B. Passer
   par `annotators.team_color`.

@@ -19,6 +19,12 @@ import supervision as sv
 
 from ..config import BALL_ID, TrackingConfig
 
+# Rendu comme identifiant de piste tant qu'une détection n'est pas confirmée.
+# Ces détections existent et doivent être dessinées, mais ne constituent pas
+# une identité : les compter fusionnerait tous les joueurs non associés en un
+# seul, qui cumulerait leurs distances.
+UNTRACKED = -1
+
 
 class PersonTracker:
     def __init__(
@@ -55,6 +61,13 @@ class PersonTracker:
     def reset(self) -> None:
         """À appeler sur un changement de plan."""
         self.tracker.reset()
+
+
+def is_tracked(detections: sv.Detections) -> np.ndarray:
+    """Masque des détections portant un identifiant de piste confirmé."""
+    if detections.tracker_id is None or len(detections) == 0:
+        return np.zeros(len(detections), dtype=bool)
+    return np.asarray(detections.tracker_id) > UNTRACKED
 
 
 def ball_position(ball: sv.Detections) -> np.ndarray | None:

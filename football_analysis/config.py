@@ -111,10 +111,12 @@ class ProcessingConfig:
     # mais le suivi, qui a besoin de recouvrement entre images consécutives
     # pour conserver les identités.
     #
-    # 10 fps est un compromis prudent : deux fois plus de marge que le seuil
-    # où la mesure commencerait à souffrir, et cinq fois moins de calcul qu'un
-    # traitement intégral. `None` traite toutes les images.
-    sample_fps: float | None = 10.0
+    # 12 fps est mesuré, pas choisi : sur un extrait réel, le nombre
+    # d'identités produites par le traqueur vaut 15 à 25 fps, 14 à 12,5 fps,
+    # puis 20 à 5 fps et 22 à 2 fps. Descendre sous 12 fragmente les pistes
+    # sans économie proportionnelle ; monter au-dessus double le calcul sans
+    # rien améliorer. `None` traite toutes les images.
+    sample_fps: float | None = 12.0
 
     # Fréquence des remontées de progression, en images. Écrire en base à
     # chaque image saturerait SQLite pendant que l'API lit.

@@ -29,7 +29,7 @@ from .pitch.mask import on_pitch, playable_area
 from .pitch.view import HomographyCache
 from .render import annotators
 from .teams.classifier import UNASSIGNED, TeamClassifier, assign_goalkeeper
-from .tracking.tracker import PersonTracker, ball_position
+from .tracking.tracker import UNTRACKED, PersonTracker, ball_position, is_tracked
 from .video import io as video_io
 
 
@@ -186,7 +186,12 @@ def run(
 
             if transformer is not None and len(pitch_xy) == len(teams) and len(pitch_xy):
                 last_pitch_xy, last_teams = pitch_xy, teams
-                for track_id, xy, team in zip(players.tracker_id, pitch_xy, teams):
+                suivis = is_tracked(players)
+                for track_id, xy, team, connu in zip(
+                    players.tracker_id, pitch_xy, teams, suivis
+                ):
+                    if not connu:
+                        continue
                     stats.update_player(
                         int(track_id), xy, None if team == UNASSIGNED else int(team)
                     )
@@ -211,8 +216,11 @@ def run(
 
             # Rendu.
             for bbox, track_id, team in zip(players.xyxy, players.tracker_id, teams):
+                # Une détection non confirmée est dessinée sans numéro : lui en
+                # afficher un laisserait croire à un joueur identifié.
+                etiquette = None if int(track_id) <= UNTRACKED else str(track_id)
                 annotators.draw_ellipse(
-                    frame, bbox, annotators.team_color(int(team)), str(track_id)
+                    frame, bbox, annotators.team_color(int(team)), etiquette
                 )
             for bbox, track_id in zip(keepers.xyxy, keepers.tracker_id):
                 team = UNASSIGNED

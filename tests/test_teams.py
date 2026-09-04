@@ -106,3 +106,30 @@ def test_unassigned_is_never_painted_as_a_team():
     assert annotators.team_color(1) == annotators.TEAM_COLORS[1]
     assert annotators.team_color(UNASSIGNED) == annotators.UNASSIGNED_COLOR
     assert annotators.team_color(UNASSIGNED) not in annotators.TEAM_COLORS
+
+
+def test_untracked_detections_are_identified_as_such():
+    """Le pipeline doit pouvoir écarter ce que le traqueur n'a pas confirmé."""
+    import supervision as sv
+    from football_analysis.tracking.tracker import UNTRACKED, is_tracked
+
+    detections = sv.Detections(
+        xyxy=np.array([[0, 0, 10, 20], [30, 0, 40, 20], [60, 0, 70, 20]], dtype=np.float32),
+        confidence=np.full(3, 0.9, dtype=np.float32),
+        class_id=np.array([2, 2, 2]),
+        tracker_id=np.array([7, UNTRACKED, 12]),
+    )
+    assert is_tracked(detections).tolist() == [True, False, True]
+
+
+def test_detections_without_any_tracker_id_are_all_untracked():
+    import supervision as sv
+    from football_analysis.tracking.tracker import is_tracked
+
+    detections = sv.Detections(
+        xyxy=np.array([[0, 0, 10, 20]], dtype=np.float32),
+        confidence=np.array([0.9], dtype=np.float32),
+        class_id=np.array([2]),
+    )
+    assert is_tracked(detections).tolist() == [False]
+    assert is_tracked(sv.Detections.empty()).tolist() == []
