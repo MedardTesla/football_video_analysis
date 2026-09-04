@@ -32,8 +32,10 @@ def control_map(
     return (d_b < d_a).astype(np.uint8).reshape(len(ys), len(xs))
 
 
-def control_share(team_a: np.ndarray, team_b: np.ndarray) -> tuple[float, float]:
+def control_share(
+    team_a: np.ndarray, team_b: np.ndarray, resolution_cm: int = 50
+) -> tuple[float, float]:
     """Part du terrain contrôlée par chaque équipe, en fraction de 1."""
-    grid = control_map(team_a, team_b)
+    grid = control_map(team_a, team_b, resolution_cm=resolution_cm)
     share_b = float(grid.mean())
     return 1.0 - share_b, share_b

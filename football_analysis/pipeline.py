@@ -22,6 +22,7 @@ import supervision as sv
 
 from .analytics.ball import BallTrajectory
 from .analytics.stats import MatchStats, nearest_player_team
+from .analytics.voronoi import control_share
 from .config import BALL_ID, GOALKEEPER_ID, PLAYER_ID, REFEREE_ID, Config
 from .detection.detector import Detector
 from .pitch.keypoints import PitchKeypointDetector, transformer_from_keypoints
@@ -213,6 +214,18 @@ def run(
                     else None
                 )
                 stats.update_possession(possession_team)
+
+                # Contrôle territorial : la statistique qui survit à une
+                # localisation imprécise, là où les distances individuelles
+                # n'y survivent pas. Résolution volontairement grossière —
+                # 1 m suffit et divise par quatre le coût par frame.
+                equipe_a = pitch_xy[teams == 0]
+                equipe_b = pitch_xy[teams == 1]
+                if len(equipe_a) and len(equipe_b):
+                    part_a, part_b = control_share(
+                        equipe_a, equipe_b, resolution_cm=config.processing.control_resolution_cm
+                    )
+                    stats.update_control({0: part_a, 1: part_b})
 
             # Rendu.
             for bbox, track_id, team in zip(players.xyxy, players.tracker_id, teams):

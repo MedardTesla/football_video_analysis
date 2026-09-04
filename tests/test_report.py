@@ -126,8 +126,16 @@ def test_low_coverage_explains_the_remedy():
     stats = dict(STATS, coverage=0.47, unmeasured_seconds=2900)
     page = render(stats, META)
     assert "plus haut et plus reculé" in page
-    # Les totaux sont plancher, pas extrapolés : à dire explicitement.
-    assert "plancher" in page
+
+
+def test_distances_are_not_presented_as_a_floor():
+    """Deux effets opposés : la couverture les diminue, l'imprécision de
+    localisation les augmente — une erreur de 5 m multiplie par seize la
+    longueur d'un pas. Les annoncer comme un plancher serait faux."""
+    page = render(dict(STATS, coverage=0.47, unmeasured_seconds=2900), META)
+    assert "plancher" not in page
+    assert "sens contraire" in page
+    assert "ordres de grandeur" in page
 
 
 def test_report_without_coverage_still_renders():
@@ -135,3 +143,32 @@ def test_report_without_coverage_still_renders():
     page = render(STATS, META)
     assert "du match analysé" not in page
     assert "9.8" in page
+
+
+def test_territorial_control_is_shown_when_available():
+    """La statistique qui survit à une localisation imprécise."""
+    stats = dict(STATS, control={"0": 0.56, "1": 0.44}, control_seconds=4800)
+    page = render(stats, META)
+    assert "Contrôle du terrain" in page
+    assert "56%" in page and "44%" in page
+
+
+def test_control_is_presented_apart_from_possession():
+    """Deux notions distinctes : on peut avoir le ballon sans occuper
+    le terrain."""
+    stats = dict(STATS, control={"0": 0.56, "1": 0.44})
+    page = render(stats, META)
+    assert page.index("Possession") < page.index("Contrôle du terrain")
+    assert "sans occuper le terrain" in page
+
+
+def test_control_is_recommended_over_distances_with_figures():
+    """L'écart mesuré : 2 points contre un facteur seize."""
+    page = render(dict(STATS, control={"0": 0.56, "1": 0.44}), META)
+    assert "deux points" in page
+    assert "seize" in page
+
+
+def test_a_report_without_control_omits_the_section():
+    page = render(STATS, META)
+    assert "Contrôle du terrain" not in page

@@ -83,3 +83,19 @@ def test_an_untracked_detection_is_refused_as_an_identity():
     with pytest.raises(ValueError, match="non suivies"):
         stats.update_player(-1, np.array([0.0, 0.0]), team=0)
     assert stats.players == {}
+
+
+def test_control_accumulates_across_frames():
+    stats = MatchStats(fps=25.0)
+    stats.update_control({0: 0.6, 1: 0.4})
+    stats.update_control({0: 0.4, 1: 0.6})
+    assert stats.control_share() == {0: pytest.approx(0.5), 1: pytest.approx(0.5)}
+    # Arrondi à la décimale : 2 images à 25 fps font 0,08 s, soit 0,1 s.
+    assert stats.to_dict()["control_seconds"] == pytest.approx(0.1)
+
+
+def test_control_ignores_frames_without_both_teams():
+    stats = MatchStats(fps=25.0)
+    stats.update_control({})
+    assert stats.control_frames == 0
+    assert stats.control_share() == {}

@@ -114,6 +114,40 @@ def _coverage_block(stats: dict) -> str:
 </div>"""
 
 
+def _control_block(stats: dict) -> str:
+    """Contrôle territorial, présenté comme une barre divisée.
+
+    Distinct de la possession : celle-ci dit qui a le ballon, celui-là dit qui
+    occupe le terrain. Un club peut mener la possession en étant acculé.
+    """
+    control = stats.get("control") or {}
+    if not control:
+        return ""
+
+    keys = sorted(control)
+    gauche = int(keys[0])
+    droite = int(keys[-1]) if len(keys) > 1 else gauche
+    part = control[keys[0]]
+
+    return f"""<section><h2>Contrôle du terrain</h2>
+ <p class="lede">Part du terrain la plus proche d'un joueur de chaque équipe.
+ Complément de la possession : on peut avoir le ballon sans occuper le terrain.</p>
+ <div class="poss">
+  <div class="poss__ends">
+   <span><i class="dot" style="background:{TEAM_HEX[gauche % 2]}"></i>{TEAM_LABELS[gauche % 2]}</span>
+   <span>{TEAM_LABELS[droite % 2]}<i class="dot" style="background:{TEAM_HEX[droite % 2]}"></i></span>
+  </div>
+  <div class="poss__bar">
+   <span style="width:{part * 100:.1f}%;background:{TEAM_HEX[gauche % 2]}"></span>
+   <span style="width:{(1 - part) * 100:.1f}%;background:{TEAM_HEX[droite % 2]}"></span>
+  </div>
+  <div class="poss__ends poss__figs">
+   <span>{part:.0%}</span><span>{1 - part:.0%}</span>
+  </div>
+ </div>
+</section>"""
+
+
 def _caveats(stats: dict) -> list[str]:
     """Limites affichées au club, déduites des données elles-mêmes.
 
@@ -128,13 +162,24 @@ def _caveats(stats: dict) -> list[str]:
             "et possession sont indisponibles. Cause la plus fréquente, une caméra "
             "placée trop bas pour voir les lignes du terrain."
         )
+    if stats.get("control") and stats.get("players"):
+        notes.append(
+            "Le contrôle du terrain encaisse bien l'imprécision de localisation : "
+            "une erreur de 5 m sur la position des joueurs ne le décale que de deux "
+            "points. Les distances parcourues, au contraire, s'effondrent — la même "
+            "erreur multiplie par seize la longueur d'un pas de course. À privilégier "
+            "donc pour lire le match."
+        )
     coverage = stats.get("coverage")
     if coverage is not None and coverage < 0.8:
         notes.append(
             f"Seules {coverage:.0%} des images ont pu être rattachées au terrain. "
-            "Les périodes non mesurées sont exclues des totaux plutôt qu'estimées : "
-            "les distances affichées sont donc plancher, jamais gonflées. Filmer "
-            "depuis un point plus haut et plus reculé améliore nettement ce taux."
+            "Les périodes non mesurées sont exclues plutôt qu'estimées, ce qui "
+            "diminue les distances affichées ; l'imprécision de localisation, elle, "
+            "les augmente. Les deux effets jouent en sens contraire et ne se "
+            "compensent pas de façon connue : lire ces distances comme des ordres de "
+            "grandeur, pas comme des mesures. Filmer depuis un point plus haut et "
+            "plus reculé améliore nettement le taux."
         )
     if len(players) > 30:
         notes.append(
@@ -199,6 +244,7 @@ h2 { font:600 .72rem/1 "IBM Plex Sans",sans-serif; letter-spacing:.14em;
      text-transform:uppercase; color:var(--muted); margin:0;
      padding-bottom:.6rem; border-bottom:1px solid var(--line); }
 
+section > .lede { margin-bottom:.2rem; }
 .poss { display:flex; flex-direction:column; gap:.5rem; }
 .poss__ends { display:flex; justify-content:space-between; align-items:center;
               font-size:.86rem; color:var(--muted); }
@@ -318,6 +364,7 @@ def render_body(stats: dict, meta: ReportMeta, radar_png: Path | None = None) ->
  </header>
  {_coverage_block(stats)}
  <section><h2>Possession</h2>{_possession_block(stats.get("possession", {}))}</section>
+ {_control_block(stats)}
  {radar}
  <section><h2>Joueurs</h2>{_players_block(stats.get("players", []))}</section>
  {notes}

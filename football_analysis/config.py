@@ -118,6 +118,11 @@ class ProcessingConfig:
     # rien améliorer. `None` traite toutes les images.
     sample_fps: float | None = 12.0
 
+    # Pas de la grille du diagramme de Voronoï, en centimètres. 100 cm suffit
+    # pour un partage de terrain et divise par quatre le coût par frame par
+    # rapport à 50 cm.
+    control_resolution_cm: int = 100
+
     # Fréquence des remontées de progression, en images. Écrire en base à
     # chaque image saturerait SQLite pendant que l'API lit.
     progress_every: int = 250

@@ -35,6 +35,8 @@ class MatchStats:
     possession_frames: dict[int, int] = field(default_factory=lambda: defaultdict(int))
     measured_frames: int = 0
     unmeasured_frames: int = 0
+    control_frames: int = 0
+    control_sum: dict[int, float] = field(default_factory=lambda: defaultdict(float))
     _last_xy: dict[int, np.ndarray] = field(default_factory=dict, repr=False)
 
     def update_player(self, track_id: int, xy: np.ndarray, team: int | None) -> None:
@@ -93,6 +95,26 @@ class MatchStats:
         if team is not None:
             self.possession_frames[team] += 1
 
+    def update_control(self, shares: dict[int, float]) -> None:
+        """Part du terrain contrôlée par chaque équipe sur cette frame.
+
+        Contrairement aux distances individuelles, cette statistique reste
+        valable malgré une localisation imprécise : déplacer tous les joueurs
+        de quelques mètres ne change presque pas le partage du terrain, alors
+        que cela fausse chaque pas de course.
+        """
+        if not shares:
+            return
+        self.control_frames += 1
+        for team, part in shares.items():
+            self.control_sum[team] += part
+
+    def control_share(self) -> dict[int, float]:
+        """Contrôle territorial moyen sur les frames mesurables."""
+        if self.control_frames == 0:
+            return {}
+        return {t: s / self.control_frames for t, s in self.control_sum.items()}
+
     def possession_share(self) -> dict[int, float]:
         total = sum(self.possession_frames.values())
         if total == 0:
@@ -107,6 +129,8 @@ class MatchStats:
             "unmeasured_seconds": round(self.unmeasured_frames / self.fps, 1),
             "total_seconds": round(total / self.fps, 1),
             "possession": self.possession_share(),
+            "control": self.control_share(),
+            "control_seconds": round(self.control_frames / self.fps, 1),
             "players": [
                 {
                     "track_id": p.track_id,
