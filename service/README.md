@@ -72,6 +72,16 @@ Deux points de conception :
 Pour WhatsApp, plus pertinent en Afrique de l'Ouest, il suffira d'écrire une
 classe respectant le protocole `Notifier` — le reste du service n'y touche pas.
 
+## Poids de la vidéo livrée
+
+Encodée en H.264, 1280 px de large : **0,38 Go pour un match de 90 minutes**,
+contre 3,3 Go avec le codec mp4v d'OpenCV en 1080p. C'est la différence entre
+un fichier qu'un club télécharge et un fichier qu'il abandonne.
+
+Le paramètre est dans `video/io.py` : `LARGEUR_LIVREE` et `CRF`. Monter la
+qualité à CRF 24 ou revenir en 1080p reste possible pour un client qui le
+demande, au prix du poids.
+
 ## Protection du disque
 
 Le dépôt est ouvert sans compte : n'importe qui peut envoyer 8 Go. Trois

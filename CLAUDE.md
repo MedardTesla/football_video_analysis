@@ -78,6 +78,14 @@ analytics/voronoi.py   zones de contrôle par équipe, sur grille du terrain
 
 Décisions structurantes, non évidentes à la lecture d'un seul fichier :
 
+- **La vidéo livrée est en H.264, 1280 px de large.** Mesuré sur des images
+  réelles : le codec mp4v d'OpenCV en 1080p donne 3,3 Go pour un match de 90
+  minutes, intéléchargeable sur la connexion mobile qui est la norme du marché
+  visé ; H.264 en 720 p donne 0,38 Go, et les numéros de maillot restent nets.
+  OpenCV ne sait pas encoder en H.264 dans les distributions courantes — `avc1`
+  échoue silencieusement et laisse un fichier vide — d'où le passage par
+  ffmpeg, avec repli sur mp4v s'il est absent : un fichier lourd vaut mieux
+  qu'une analyse de quarante minutes perdue.
 - **Tout est en flux.** `video/io.py` expose des générateurs. Le prototype chargeait
   la vidéo entière en mémoire, ce qui plafonnait la durée traitable.
 - **Le pipeline sous-échantillonne** à `ProcessingConfig.sample_fps` (12 fps,

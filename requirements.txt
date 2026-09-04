@@ -11,6 +11,10 @@ transformers>=4.44.0        # SigLIP
 umap-learn>=0.5.6
 scikit-learn>=1.5.0
 
+# Encodage H.264 de la vidéo livrée. Sans lui le service tourne, mais la
+# vidéo pèse neuf fois plus lourd — 3,3 Go au lieu de 0,38 Go par match.
+imageio-ffmpeg>=0.5.1
+
 # Utilitaires
 tqdm>=4.66.0
 pydantic>=2.8.0
