@@ -130,12 +130,26 @@ def test_low_coverage_explains_the_remedy():
 
 def test_distances_are_not_presented_as_a_floor():
     """Deux effets opposés : la couverture les diminue, l'imprécision de
-    localisation les augmente — une erreur de 5 m multiplie par seize la
-    longueur d'un pas. Les annoncer comme un plancher serait faux."""
+    localisation les augmente. Les annoncer comme un plancher serait faux."""
     page = render(dict(STATS, coverage=0.47, unmeasured_seconds=2900), META)
     assert "plancher" not in page
     assert "sens contraire" in page
+
+
+def test_distances_are_qualified_even_at_full_coverage():
+    """L'imprécision de localisation ne dépend pas de la couverture.
+
+    Rattacher cet avertissement à une couverture faible le faisait disparaître
+    sur les rapports complets — donc sur les plus lus.
+    """
+    page = render(dict(STATS, coverage=1.0, unmeasured_seconds=0), META)
     assert "ordres de grandeur" in page
+    assert "seize" in page
+
+
+def test_a_report_without_players_does_not_warn_about_distances():
+    page = render({"possession": {}, "players": []}, META)
+    assert "ordres de grandeur" not in page
 
 
 def test_report_without_coverage_still_renders():
@@ -163,7 +177,7 @@ def test_control_is_presented_apart_from_possession():
 
 
 def test_control_is_recommended_over_distances_with_figures():
-    """L'écart mesuré : 2 points contre un facteur seize."""
+    """L'écart mesuré : deux points contre un facteur seize."""
     page = render(dict(STATS, control={"0": 0.56, "1": 0.44}), META)
     assert "deux points" in page
     assert "seize" in page

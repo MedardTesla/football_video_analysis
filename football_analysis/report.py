@@ -162,24 +162,27 @@ def _caveats(stats: dict) -> list[str]:
             "et possession sont indisponibles. Cause la plus fréquente, une caméra "
             "placée trop bas pour voir les lignes du terrain."
         )
-    if stats.get("control") and stats.get("players"):
+    # Cet avertissement ne dépend pas de la couverture : l'imprécision de
+    # localisation dégrade les distances même sur un match analysé de bout en
+    # bout. Le rattacher à la couverture le faisait disparaître précisément
+    # sur les rapports les plus complets — donc les plus lus.
+    if stats.get("players"):
         notes.append(
-            "Le contrôle du terrain encaisse bien l'imprécision de localisation : "
-            "une erreur de 5 m sur la position des joueurs ne le décale que de deux "
-            "points. Les distances parcourues, au contraire, s'effondrent — la même "
-            "erreur multiplie par seize la longueur d'un pas de course. À privilégier "
-            "donc pour lire le match."
+            "Les distances et vitesses sont des ordres de grandeur, pas des mesures. "
+            "Une erreur de 5 m sur la position d'un joueur multiplie par seize la "
+            "longueur d'un pas de course, alors qu'elle ne décale le contrôle du "
+            "terrain que de deux points. Pour lire le match, se fier d'abord aux "
+            "statistiques d'équipe."
         )
     coverage = stats.get("coverage")
     if coverage is not None and coverage < 0.8:
         notes.append(
             f"Seules {coverage:.0%} des images ont pu être rattachées au terrain. "
             "Les périodes non mesurées sont exclues plutôt qu'estimées, ce qui "
-            "diminue les distances affichées ; l'imprécision de localisation, elle, "
-            "les augmente. Les deux effets jouent en sens contraire et ne se "
-            "compensent pas de façon connue : lire ces distances comme des ordres de "
-            "grandeur, pas comme des mesures. Filmer depuis un point plus haut et "
-            "plus reculé améliore nettement le taux."
+            "diminue encore les distances affichées, quand l'imprécision de "
+            "localisation les augmente : les deux effets jouent en sens contraire "
+            "sans se compenser. Filmer depuis un point plus haut et plus reculé "
+            "améliore nettement ce taux."
         )
     if len(players) > 30:
         notes.append(
