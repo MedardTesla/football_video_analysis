@@ -16,8 +16,9 @@ from typing import Callable
 from football_analysis.config import Config
 from football_analysis.report import ReportMeta, write as write_report
 
-from .jobs import JobState, JobStore
-from .settings import STALE_SECONDS
+from .jobs import Job, JobState, JobStore
+from .notify import LogNotifier, Notifier, analysis_failed, report_ready
+from .settings import BASE_URL, STALE_SECONDS
 from .storage import Storage
 
 log = logging.getLogger("worker")
@@ -35,15 +36,33 @@ def _load_pipeline() -> Callable:
     return run
 
 
+def _prevenir(job: Job, notifier: Notifier, message) -> None:
+    """Envoie l'avis au club, sans jamais compromettre l'analyse.
+
+    Un envoi raté n'annule pas un rapport produit : le lien fonctionne, seul
+    l'avis manque. L'inverse — perdre une analyse parce qu'un serveur SMTP est
+    injoignable — serait absurde.
+    """
+    if not job.contact:
+        return
+    message.destinataire = job.contact
+    try:
+        notifier.send(message)
+    except Exception:                                  # noqa: BLE001
+        log.exception("notification impossible pour le match %s", job.id)
+
+
 def process(
     job_id: str,
     store: JobStore,
     storage: Storage,
     config: Config,
     run: Callable | None = None,
+    notifier: Notifier | None = None,
 ) -> None:
     """`run` permet d'injecter le pipeline ; par défaut il est chargé tardivement."""
     run = run or _load_pipeline()
+    notifier = notifier or LogNotifier()
     job = store.get(job_id)
     if job is None:
         return
@@ -88,15 +107,16 @@ def process(
         # La source ne sert plus, et c'est le poste de stockage dominant.
         Path(job.video_path).unlink(missing_ok=True)
         log.info("match %s analysé", job.id)
+        _prevenir(job, notifier, report_ready(job.match_name, job.public_url, BASE_URL))
 
     except Exception as erreur:                      # noqa: BLE001
         # Le message est lu par un club, pas par un développeur : la trace
         # complète va dans les logs, pas dans le rapport.
         log.exception("échec du match %s", job.id)
-        store.update(
-            job.id,
-            state=JobState.FAILED,
-            error=_message_lisible(erreur),
+        raison = _message_lisible(erreur)
+        store.update(job.id, state=JobState.FAILED, error=raison)
+        _prevenir(
+            job, notifier, analysis_failed(job.match_name, raison, job.public_url, BASE_URL)
         )
 
 
@@ -122,6 +142,7 @@ def serve(
     store: JobStore, storage: Storage, config: Config | None = None,
     poll_seconds: float = 5.0, once: bool = False,
     stale_seconds: float = STALE_SECONDS, run: Callable | None = None,
+    notifier: Notifier | None = None,
 ) -> None:
     """Boucle de traitement. `once=True` vide la file puis rend la main."""
     config = config or Config()
@@ -150,7 +171,7 @@ def serve(
         # la place, et un disque plein ferait échouer l'analyse en cours de
         # route après plusieurs dizaines de minutes de GPU.
         storage.purge_older_than()
-        process(job.id, store, storage, config, run=run)
+        process(job.id, store, storage, config, run=run, notifier=notifier)
         # Ne pas tester la file avec claim_next : elle réserverait le job
         # suivant avant de l'abandonner en état « en cours », définitivement.
         if once and store.pending_count() == 0:

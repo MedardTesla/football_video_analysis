@@ -6,6 +6,7 @@ import logging
 from football_analysis.config import Config
 
 from .jobs import JobStore
+from .notify import from_environment
 from .settings import DATA_ROOT
 from .storage import Storage
 
@@ -16,8 +17,16 @@ def main() -> int:
     )
     from .worker import serve
 
-    logging.getLogger("worker").info("worker démarré, données dans %s", DATA_ROOT)
-    serve(JobStore(DATA_ROOT / "jobs.db"), Storage(DATA_ROOT / "videos"), Config())
+    notifier = from_environment()
+    log = logging.getLogger("worker")
+    log.info("worker démarré, données dans %s", DATA_ROOT)
+    log.info("notifications : %s", type(notifier).__name__)
+    serve(
+        JobStore(DATA_ROOT / "jobs.db"),
+        Storage(DATA_ROOT / "videos"),
+        Config(),
+        notifier=notifier,
+    )
     return 0
 
 

@@ -467,3 +467,72 @@ def test_health_reports_free_space_when_healthy(client):
     corps = tc.get("/sante").json()
     assert corps["sature"] is False
     assert corps["disque_libre_go"] > 0
+
+
+# --- Contact et notification -------------------------------------------------
+
+def test_a_contact_is_stored_with_the_match(client):
+    tc, api = client
+    tc.post("/matches",
+            data={"club": "US Valmont", "match_name": "Match",
+                  "contact": "entraineur@club.fr"},
+            files={"video": ("m.mp4", b"x" * 500, "video/mp4")})
+    assert api.store.list_for_club("US Valmont")[0].contact == "entraineur@club.fr"
+
+
+def test_an_invalid_address_is_refused_not_ignored(client):
+    """L'ignorer ferait attendre au club un message qui ne viendrait jamais."""
+    tc, api = client
+    reponse = tc.post("/matches",
+        data={"club": "US Valmont", "match_name": "Match", "contact": "pas-une-adresse"},
+        files={"video": ("m.mp4", b"x" * 500, "video/mp4")})
+    assert reponse.status_code == 400
+    assert "invalide" in reponse.text
+
+
+def test_the_contact_stays_optional(client):
+    tc, api = client
+    assert _deposer(tc).status_code == 201
+    assert api.store.list_for_club("US Valmont")[0].contact == ""
+
+
+def test_the_confirmation_mentions_the_address_when_given(client):
+    tc, _ = client
+    reponse = tc.post("/matches",
+        data={"club": "US Valmont", "match_name": "Match",
+              "contact": "entraineur@club.fr"},
+        files={"video": ("m.mp4", b"x" * 500, "video/mp4")})
+    assert "entraineur@club.fr" in reponse.text
+    assert "prévenu" in reponse.text
+
+
+def test_the_form_warns_that_the_link_travels_by_mail(client):
+    """Une adresse mal saisie envoie le lien privé à un inconnu."""
+    tc, _ = client
+    page = tc.get("/").text
+    assert "vérifiez l" in page.lower()
+    assert "facultatif" in page
+
+
+def test_an_older_database_gains_the_contact_column(tmp_path):
+    import sqlite3
+
+    chemin = tmp_path / "ancienne.db"
+    db = sqlite3.connect(chemin)
+    db.executescript(
+        "CREATE TABLE jobs (id TEXT PRIMARY KEY, token TEXT NOT NULL,"
+        " club TEXT NOT NULL, match_name TEXT NOT NULL, video_path TEXT NOT NULL,"
+        " state TEXT NOT NULL, progress REAL NOT NULL DEFAULT 0, error TEXT,"
+        " stats TEXT, report_path TEXT, video_output_path TEXT,"
+        " created_at TEXT NOT NULL, updated_at TEXT NOT NULL);"
+    )
+    db.execute(
+        "INSERT INTO jobs VALUES ('a','t','Club','Match','/tmp/v.mp4','queued',"
+        "0,NULL,NULL,NULL,NULL,'2026-01-01T00:00:00+00:00','2026-01-01T00:00:00+00:00')"
+    )
+    db.commit(); db.close()
+
+    store = JobStore(chemin)
+    assert store.get("a").contact == ""
+    nouveau = store.create("Club", "Autre", "/tmp/v.mp4", contact="a@b.fr")
+    assert store.get(nouveau.id).contact == "a@b.fr"

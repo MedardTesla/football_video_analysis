@@ -31,6 +31,14 @@ services:
       - ./models:/app/models:ro
     environment:
       FA_DATA_ROOT: /data
+      # Notification du club. Sans ces variables, le service tourne quand
+      # même : le club récupère son rapport par le lien reçu au dépôt.
+      FA_BASE_URL: ${FA_BASE_URL:-}
+      FA_SMTP_HOST: ${FA_SMTP_HOST:-}
+      FA_SMTP_PORT: ${FA_SMTP_PORT:-587}
+      FA_SMTP_USER: ${FA_SMTP_USER:-}
+      FA_SMTP_PASSWORD: ${FA_SMTP_PASSWORD:-}
+      FA_SMTP_FROM: ${FA_SMTP_FROM:-}
     deploy:
       resources:
         reservations:

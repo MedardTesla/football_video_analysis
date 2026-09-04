@@ -37,6 +37,7 @@ class Job:
     club: str
     match_name: str
     video_path: str
+    contact: str = ""
     state: JobState = JobState.QUEUED
     progress: float = 0.0
     error: str | None = None
@@ -65,6 +66,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     club TEXT NOT NULL,
     match_name TEXT NOT NULL,
     video_path TEXT NOT NULL,
+    contact TEXT NOT NULL DEFAULT '',
     state TEXT NOT NULL,
     progress REAL NOT NULL DEFAULT 0,
     attempts INTEGER NOT NULL DEFAULT 0,
@@ -94,6 +96,8 @@ class JobStore:
         existantes = {r["name"] for r in db.execute("PRAGMA table_info(jobs)")}
         if "attempts" not in existantes:
             db.execute("ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+        if "contact" not in existantes:
+            db.execute("ALTER TABLE jobs ADD COLUMN contact TEXT NOT NULL DEFAULT ''")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=30)
@@ -103,20 +107,24 @@ class JobStore:
         db.execute("PRAGMA journal_mode=WAL")
         return db
 
-    def create(self, club: str, match_name: str, video_path: str) -> Job:
+    def create(
+        self, club: str, match_name: str, video_path: str, contact: str = ""
+    ) -> Job:
         job = Job(
             id=secrets.token_hex(8),
             token=secrets.token_urlsafe(24),
             club=club,
             match_name=match_name,
             video_path=str(video_path),
+            contact=contact,
         )
         with self._connect() as db:
             db.execute(
-                "INSERT INTO jobs (id, token, club, match_name, video_path, state,"
-                " progress, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO jobs (id, token, club, match_name, video_path, contact,"
+                " state, progress, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (job.id, job.token, job.club, job.match_name, job.video_path,
-                 job.state.value, job.progress, job.created_at, job.updated_at),
+                 job.contact, job.state.value, job.progress, job.created_at,
+                 job.updated_at),
             )
         return job
 

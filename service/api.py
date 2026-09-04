@@ -16,6 +16,7 @@ from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from .jobs import Job, JobState, JobStore
+from .notify import looks_like_email
 from .settings import DATA_ROOT, STALE_SECONDS
 from .storage import Storage, UploadRefuse
 from .web import pages
@@ -44,12 +45,21 @@ async def deposer(
     request: Request,
     club: str = Form(...),
     match_name: str = Form(...),
+    contact: str = Form(""),
     video: UploadFile = None,
 ) -> HTMLResponse:
     if video is None or not video.filename:
         return HTMLResponse(pages.upload_form(erreur="Aucune vidéo sélectionnée."), 400)
 
-    job = store.create(club.strip(), match_name.strip(), video_path="")
+    # Une adresse invalide est refusée plutôt qu'ignorée : le club croirait
+    # être prévenu et attendrait un message qui ne viendrait jamais.
+    contact = contact.strip()
+    if contact and not looks_like_email(contact):
+        return HTMLResponse(
+            pages.upload_form(erreur=f"Adresse e-mail invalide : {contact}"), 400
+        )
+
+    job = store.create(club.strip(), match_name.strip(), video_path="", contact=contact)
     try:
         chemin = storage.save_upload(job.id, video.filename, video.file)
     except UploadRefuse as refus:

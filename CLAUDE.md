@@ -194,6 +194,12 @@ Décisions structurantes :
   dominant, et ce sont les images du club.
 - **Les erreurs sont traduites** par `worker._message_lisible`. Un club ne doit
   jamais lire « CUDA out of memory » ni un chemin interne.
+- **La notification ne peut pas faire échouer une analyse.** `worker._prevenir`
+  avale toute exception d'envoi : le rapport existe et le lien fonctionne, seul
+  l'avis manque. Le contact est facultatif, et une adresse invalide est refusée
+  au dépôt plutôt qu'ignorée — sinon le club attendrait un message qui ne
+  viendrait jamais. `notify.Notifier` est un protocole : un envoi WhatsApp se
+  branchera sans toucher au reste.
 - **Les matchs abandonnés sont repris.** Un worker tué laisse un match en « en
   cours » pour toujours ; `reclaim_stale` le remet en file après 15 min sans
   nouvelle. Les écritures de progression servent de battement de cœur, ce qui

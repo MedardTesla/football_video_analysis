@@ -59,6 +59,8 @@ button { font:600 1rem/1 "IBM Plex Sans",sans-serif; padding:.85rem 1.2rem;
          color:var(--turf-ink); cursor:pointer; }
 button:hover { filter:brightness(1.08); }
 .hint { font-size:.8rem; color:var(--muted); font-weight:400; }
+.option { font-weight:400; font-size:.75rem; color:var(--muted);
+          text-transform:uppercase; letter-spacing:.06em; margin-left:.4rem; }
 .panel { background:var(--surface); border:1px solid var(--line);
          border-radius:8px; padding:1.25rem 1.4rem;
          display:flex; flex-direction:column; gap:.8rem; }
@@ -142,6 +144,12 @@ def upload_form(erreur: str | None = None) -> str:
    <input type="file" name="video" accept="video/*" required>
    <span class="hint">MP4, MOV, AVI ou MKV. 8 Go maximum, soit environ 2 h en 1080p.</span>
   </label>
+  <label>Adresse e-mail <span class="option">facultatif</span>
+   <input type="email" name="contact" maxlength="120" placeholder="entraineur@club.fr">
+   <span class="hint">Pour être prévenu quand le rapport est prêt. Le message
+   contient le lien d'accès : vérifiez l'adresse, toute personne qui reçoit ce
+   lien peut lire le rapport.</span>
+  </label>
   <button type="submit">Envoyer la vidéo</button>
  </form>
  <p class="note">Filmez depuis un point haut et reculé : cela double la part du
@@ -151,14 +159,19 @@ def upload_form(erreur: str | None = None) -> str:
 
 
 def upload_done(job: Job, en_attente: int) -> str:
+    if job.contact:
+        avis = (f"<p>Vous serez prévenu à <strong>{html.escape(job.contact)}</strong> "
+                "dès que le rapport sera prêt. Conservez tout de même ce lien.</p>")
+    else:
+        avis = ("<p><strong>Conservez ce lien.</strong> C'est le seul moyen de "
+                "retrouver votre rapport — il ne vous sera pas renvoyé.</p>")
     corps = f"""
  <header>
   <span class="eyebrow">Vidéo reçue</span>
   <h1>{html.escape(job.match_name)}</h1>
  </header>
  <div class="panel">
-  <p><strong>Conservez ce lien.</strong> C'est le seul moyen de retrouver votre
-  rapport — il ne vous sera pas renvoyé.</p>
+  {avis}
   <p class="lien">{html.escape(job.public_url)}</p>
  </div>
  <p class="lede">{_attente(en_attente)}</p>

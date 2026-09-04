@@ -190,3 +190,63 @@ def test_a_live_job_is_not_stolen_by_a_second_worker(contexte, tmp_path):
     store.claim_next()
     worker.serve(store, storage, Config(), once=True, stale_seconds=900)
     assert store.get(job.id).state is JobState.PROCESSING
+
+
+class NotifierEspion:
+    def __init__(self, echoue: bool = False):
+        self.envoyes = []
+        self.echoue = echoue
+
+    def send(self, message):
+        if self.echoue:
+            raise RuntimeError("serveur SMTP injoignable")
+        self.envoyes.append(message)
+        return True
+
+
+def test_the_club_is_told_when_the_report_is_ready(contexte, tmp_path):
+    store, storage, job, _ = contexte
+    store.update(job.id, contact="entraineur@club.fr")
+    espion = NotifierEspion()
+
+    worker.process(job.id, store, storage, Config(),
+                   run=_pipeline_reussi(tmp_path), notifier=espion)
+
+    assert len(espion.envoyes) == 1
+    assert espion.envoyes[0].destinataire == "entraineur@club.fr"
+    assert job.public_url in espion.envoyes[0].corps
+
+
+def test_the_club_is_told_when_the_analysis_fails(contexte):
+    store, storage, job, _ = contexte
+    store.update(job.id, contact="entraineur@club.fr")
+    espion = NotifierEspion()
+
+    def echoue(*a, **k):
+        raise FileNotFoundError("vidéo illisible : /data/source.mp4")
+
+    worker.process(job.id, store, storage, Config(), run=echoue, notifier=espion)
+    assert len(espion.envoyes) == 1
+    assert "déposer à nouveau" in espion.envoyes[0].corps.lower()
+
+
+def test_no_contact_means_no_message(contexte, tmp_path):
+    store, storage, job, _ = contexte
+    espion = NotifierEspion()
+    worker.process(job.id, store, storage, Config(),
+                   run=_pipeline_reussi(tmp_path), notifier=espion)
+    assert espion.envoyes == []
+
+
+def test_a_failed_send_does_not_lose_the_report(contexte, tmp_path):
+    """Perdre une analyse parce qu'un serveur SMTP est injoignable serait
+    absurde : le rapport existe, le lien fonctionne."""
+    store, storage, job, _ = contexte
+    store.update(job.id, contact="entraineur@club.fr")
+
+    worker.process(job.id, store, storage, Config(),
+                   run=_pipeline_reussi(tmp_path), notifier=NotifierEspion(echoue=True))
+
+    fini = store.get(job.id)
+    assert fini.state is JobState.DONE
+    assert Path(fini.report_path).exists()

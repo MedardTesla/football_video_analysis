@@ -42,6 +42,36 @@ planter le worker serait relancé indéfiniment et bloquerait toute la file.
 Surveillance : `/sante` répond **503** si des matchs sont bloqués. Une sonde
 externe suffit alors à détecter un worker mort.
 
+## Notification
+
+Le club peut laisser une adresse au dépôt. Elle est facultative : sans elle, le
+service fonctionne comme avant, le club revient sur son lien.
+
+Configuration par variables d'environnement — sans elles, rien n'est envoyé et
+le worker le signale au démarrage :
+
+```
+FA_BASE_URL=https://analyse.exemple.fr
+FA_SMTP_HOST=smtp.exemple.fr
+FA_SMTP_PORT=587
+FA_SMTP_USER=...
+FA_SMTP_PASSWORD=...
+FA_SMTP_FROM=no-reply@exemple.fr
+```
+
+Deux points de conception :
+
+- **Le message contient le lien privé.** Une adresse mal saisie l'envoie à un
+  inconnu. Le formulaire l'écrit, et une adresse invalide est refusée plutôt
+  qu'ignorée — l'ignorer ferait attendre au club un message qui ne viendrait
+  jamais.
+- **Un envoi raté n'annule pas une analyse réussie.** Le rapport existe, le
+  lien fonctionne, seul l'avis manque. Perdre une analyse parce qu'un serveur
+  SMTP est injoignable serait absurde.
+
+Pour WhatsApp, plus pertinent en Afrique de l'Ouest, il suffira d'écrire une
+classe respectant le protocole `Notifier` — le reste du service n'y touche pas.
+
 ## Protection du disque
 
 Le dépôt est ouvert sans compte : n'importe qui peut envoyer 8 Go. Trois

@@ -20,3 +20,8 @@ DATA_ROOT = Path(os.environ.get("FA_DATA_ROOT", "data/service"))
 # dessein : la phase de calibrage du classifieur d'équipes ne remonte aucune
 # progression et peut durer plusieurs minutes sur une longue vidéo.
 STALE_SECONDS = 15 * 60
+
+# Adresse publique du service, pour que les liens envoyés par message soient
+# cliquables. Vide, le message montre un chemin relatif — inutilisable, mais
+# le club a de toute façon reçu le lien complet à l'écran.
+BASE_URL = os.environ.get("FA_BASE_URL", "").rstrip("/")
