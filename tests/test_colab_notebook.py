@@ -186,3 +186,32 @@ def test_the_gpu_instructions_cover_both_platforms():
         )
         assert "Kaggle" in markdown, fichier.name
         assert "Accelerator" in markdown, fichier.name
+
+
+def test_no_notebook_hardcodes_a_platform_path(tous_les_codes):
+    """Sur Kaggle, écrire hors de /kaggle/working remplit un système de
+    fichiers restreint : le dataset et les points de contrôle
+    d'entraînement y suffisent, et la session est arrêtée en cours de route.
+    """
+    for nom, src in tous_les_codes.items():
+        for ligne in src.splitlines():
+            if "RACINE =" in ligne:
+                continue                      # la ligne qui choisit la racine
+            assert "/content/" not in ligne, f"{nom} : {ligne.strip()}"
+            assert "/kaggle/working/" not in ligne, f"{nom} : {ligne.strip()}"
+
+
+def test_both_notebooks_define_a_working_root(tous_les_codes):
+    for nom, src in tous_les_codes.items():
+        assert "RACINE = Path('/kaggle/working')" in src, nom
+        assert "RACINE.mkdir" in src, nom
+
+
+def test_the_working_root_is_defined_before_it_is_used(tous_les_codes):
+    """Définie après le premier usage, la variable n'existerait pas encore."""
+    for nom, src in tous_les_codes.items():
+        definition = src.index("RACINE = Path(")
+        for usage in ("RACINE / ", "str(RACINE"):
+            premier = src.find(usage)
+            if premier != -1:
+                assert premier > definition, f"{nom} : {usage} avant la définition"
