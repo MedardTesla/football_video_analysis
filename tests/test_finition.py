@@ -162,3 +162,21 @@ def test_an_accented_match_name_does_not_break_the_download(client, nom):
     assert "attachment" in entete
     assert "filename*=UTF-8''" in entete
     entete.encode("latin-1")          # ne doit pas lever
+
+
+def test_an_unknown_route_also_shows_a_page(client):
+    """Une route inexistante lève l'exception de Starlette, que le
+    gestionnaire de FastAPI ne couvre pas."""
+    tc, _ = client
+    reponse = tc.get("/adresse-inventee")
+    assert reponse.status_code == 404
+    assert "text/html" in reponse.headers["content-type"]
+    assert "Page introuvable" in reponse.text
+
+
+def test_a_conflict_explains_the_analysis_is_running(client):
+    tc, api = client
+    job = api.store.create("US Valmont", "Match", "/tmp/v.mp4")
+    reponse = tc.get(f"{job.public_url}/rapport")
+    assert reponse.status_code == 409
+    assert "Analyse en cours" in reponse.text

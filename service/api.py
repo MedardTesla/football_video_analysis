@@ -15,6 +15,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
 from fastapi.responses import (
     FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse,
 )
@@ -29,8 +31,11 @@ from .web import pages
 app = FastAPI(title="Analyse de match", docs_url=None, redoc_url=None)
 
 
-@app.exception_handler(HTTPException)
-def erreur_lisible(request: Request, exc: HTTPException):
+# Enregistré sur l'exception de Starlette et non celle de FastAPI : une route
+# inexistante lève la première, que la seconde ne couvre pas. Sans cela,
+# `/adresse-inventee` renvoyait encore du JSON brut.
+@app.exception_handler(StarletteHTTPException)
+def erreur_lisible(request: Request, exc: StarletteHTTPException):
     """Les erreurs s'adressent à un club, pas à un client d'API.
 
     Une adresse mal recopiée renvoyait la réponse JSON brute de FastAPI, ce
