@@ -58,6 +58,12 @@ class Job:
     video_path: str
     club_id: str = ""
     contact: str = ""
+    # Laquelle des deux équipes du rapport est celle du club. Les libellés
+    # « équipe A » et « équipe B » sont des étiquettes de regroupement, pas
+    # des identités : rien ne garantit que l'équipe A d'un match soit la même
+    # que celle du match suivant. Sans cette désignation, aucune comparaison
+    # de saison n'a de sens.
+    our_team: int | None = None
     state: JobState = JobState.QUEUED
     progress: float = 0.0
     error: str | None = None
@@ -94,6 +100,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     video_path TEXT NOT NULL,
     club_id TEXT NOT NULL DEFAULT '',
     contact TEXT NOT NULL DEFAULT '',
+    our_team INTEGER,
     state TEXT NOT NULL,
     progress REAL NOT NULL DEFAULT 0,
     attempts INTEGER NOT NULL DEFAULT 0,
@@ -134,6 +141,8 @@ class JobStore:
             db.execute("ALTER TABLE jobs ADD COLUMN contact TEXT NOT NULL DEFAULT ''")
         if "club_id" not in existantes:
             db.execute("ALTER TABLE jobs ADD COLUMN club_id TEXT NOT NULL DEFAULT ''")
+        if "our_team" not in existantes:
+            db.execute("ALTER TABLE jobs ADD COLUMN our_team INTEGER")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=30)
@@ -336,6 +345,16 @@ class JobStore:
         return sum(
             1 for r in rows if datetime.fromisoformat(r["updated_at"]).timestamp() <= limite
         )
+
+    def set_our_team(self, job_id: str, team: int | None) -> None:
+        """Désigne l'équipe du club dans ce match, ou l'efface."""
+        if team is not None and team not in (0, 1):
+            raise ValueError(f"équipe invalide : {team}")
+        with self._connect() as db:
+            db.execute(
+                "UPDATE jobs SET our_team = ?, updated_at = ? WHERE id = ?",
+                (team, datetime.now(timezone.utc).isoformat(), job_id),
+            )
 
     def counts_by_state(self) -> dict[str, int]:
         with self._connect() as db:

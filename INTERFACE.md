@@ -58,6 +58,26 @@ où le navigateur n'annonce rien.
 unique divisée, comme à la télévision. Deux barres séparées obligeraient à
 comparer deux longueurs ; une barre divisée montre le rapport directement.
 
+## La tendance de saison
+
+L'espace du club trace la possession et le contrôle du terrain match après
+match, en SVG écrit à la main — une bibliothèque de graphiques pèserait plus
+lourd que la page entière pour six points lus sur un téléphone.
+
+Une difficulté a dû être résolue avant de pouvoir tracer quoi que ce soit.
+Dans un rapport, « équipe A » et « équipe B » sont des étiquettes issues d'un
+regroupement automatique : rien ne garantit que l'équipe A d'un match soit la
+même que celle du match suivant. Comparer ces chiffres d'une rencontre à
+l'autre aurait produit une courbe qui s'inverse au hasard.
+
+Le club désigne donc son équipe, d'un bouton, sur chaque match analysé. Les
+matchs sans désignation sont exclus de la tendance plutôt qu'inclus au hasard,
+et la page explique pourquoi. Recliquer sur l'équipe déjà choisie l'efface —
+seul moyen de corriger une erreur.
+
+Les distances individuelles ne sont pas agrégées : à la précision actuelle,
+leur imprécision se cumulerait au lieu de se compenser.
+
 ## Ce que l'interface dit, et pourquoi
 
 L'enjeu n'est pas décoratif. Un rapport d'analyse automatique est cru sur
@@ -81,13 +101,12 @@ Assumé pour l'instant, à traiter quand un client le demandera :
   commerciale. Le service est fonctionnel, pas vendu.
 - **Aucune personnalisation par club.** Couleurs de maillot, noms des joueurs
   au lieu des numéros de piste, logo sur le rapport.
-- **Pas de comparaison entre matchs**, ni d'export vers un tableur. L'espace du
-  club les liste, il ne les met pas en regard.
+- **Pas d'export vers un tableur**, pour les clubs qui tiennent déjà leurs
+  propres statistiques.
 
 ## Ordre proposé
 
 1. **Noms des joueurs** en remplacement des numéros de piste. Un entraîneur ne
    reconnaît pas « joueur 17 ».
-2. **Comparaison entre matchs** dans l'espace du club : possession et contrôle
-   sur une saison. Les données sont déjà là, il manque la lecture.
-3. **Identité visuelle**, quand le produit aura un nom.
+2. **Identité visuelle**, quand le produit aura un nom.
+3. **Export vers un tableur**, pour les clubs qui tiennent déjà des statistiques.

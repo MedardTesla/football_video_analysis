@@ -13,10 +13,13 @@ un client la demande.
 from __future__ import annotations
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import (
+    FileResponse, HTMLResponse, JSONResponse, RedirectResponse,
+)
 
 from .jobs import Club, Job, JobState, JobStore
 from .notify import looks_like_email
+from . import season as saison_mod
 from .settings import DATA_ROOT, STALE_SECONDS
 from .storage import Storage, UploadRefuse
 from .web import pages
@@ -50,7 +53,34 @@ def _authenticate_club(club_id: str, token: str) -> Club:
 @app.get("/c/{club_id}/{token}", response_class=HTMLResponse)
 def espace_club(club_id: str, token: str) -> str:
     club = _authenticate_club(club_id, token)
-    return pages.club_page(club, store.matches_of_club(club.id), store.pending_count())
+    matchs = store.matches_of_club(club.id)
+    return pages.club_page(
+        club, matchs, store.pending_count(), saison_mod.build(matchs)
+    )
+
+
+@app.post("/c/{club_id}/{token}/match/{job_id}/equipe")
+def designer_equipe(
+    club_id: str, token: str, job_id: str, team: int = Form(...)
+) -> RedirectResponse:
+    """Désigne l'équipe du club dans un match.
+
+    Sans cette désignation, aucune tendance de saison n'est possible : les
+    libellés « équipe A » et « équipe B » d'un rapport viennent d'un
+    regroupement automatique et ne désignent pas la même équipe d'un match à
+    l'autre.
+    """
+    club = _authenticate_club(club_id, token)
+    job = store.get(job_id)
+    if job is None or job.club_id != club.id:
+        raise HTTPException(status_code=404, detail="Match introuvable.")
+    if team not in (0, 1):
+        raise HTTPException(status_code=400, detail="Équipe invalide.")
+
+    # Recliquer sur l'équipe déjà désignée l'efface : c'est le seul moyen de
+    # revenir en arrière après une erreur.
+    store.set_our_team(job_id, None if job.our_team == team else team)
+    return RedirectResponse(club.public_url, status_code=303)
 
 
 @app.get("/c/{club_id}/{token}/deposer", response_class=HTMLResponse)

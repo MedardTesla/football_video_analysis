@@ -662,3 +662,97 @@ def test_an_older_database_gains_the_club_column(tmp_path):
     club = store.create_club("Nouveau")
     nouveau = store.create("Nouveau", "Match", "/tmp/v.mp4", club_id=club.id)
     assert store.matches_of_club(club.id) == [store.get(nouveau.id)]
+
+
+# --- Désignation de l'équipe et tendance -------------------------------------
+
+def _match_termine(api, club, nom, jour, possession):
+    job = api.store.create("US Valmont", nom, "/tmp/v.mp4", club_id=club.id)
+    api.store.update(job.id, state=JobState.DONE, report_path="/tmp/r.html",
+                     stats={"possession": {"0": possession, "1": 1 - possession},
+                            "control": {"0": possession, "1": 1 - possession},
+                            "coverage": 0.85})
+    return api.store.get(job.id)
+
+
+def test_a_finished_match_offers_the_team_selector(client):
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    _match_termine(api, club, "Match", 10, 0.6)
+    page = tc.get(club.public_url).text
+    assert "Votre équipe" in page
+    assert 'name="team" value="0"' in page and 'name="team" value="1"' in page
+
+
+def test_designating_a_team_is_recorded(client):
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    job = _match_termine(api, club, "Match", 10, 0.6)
+
+    reponse = tc.post(f"{club.public_url}/match/{job.id}/equipe",
+                      data={"team": "1"}, follow_redirects=False)
+    assert reponse.status_code == 303
+    assert api.store.get(job.id).our_team == 1
+
+
+def test_clicking_the_same_team_again_clears_it(client):
+    """Le seul moyen de revenir en arrière après une erreur."""
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    job = _match_termine(api, club, "Match", 10, 0.6)
+
+    tc.post(f"{club.public_url}/match/{job.id}/equipe", data={"team": "0"})
+    tc.post(f"{club.public_url}/match/{job.id}/equipe", data={"team": "0"})
+    assert api.store.get(job.id).our_team is None
+
+
+def test_a_club_cannot_designate_another_clubs_match(client):
+    tc, api = client
+    mien = api.store.create_club("US Valmont")
+    autre = api.store.create_club("AS Beaupré")
+    job = _match_termine(api, autre, "Match", 10, 0.6)
+
+    reponse = tc.post(f"{mien.public_url}/match/{job.id}/equipe", data={"team": "0"})
+    assert reponse.status_code == 404
+    assert api.store.get(job.id).our_team is None
+
+
+def test_an_invalid_team_is_refused(client):
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    job = _match_termine(api, club, "Match", 10, 0.6)
+    assert tc.post(f"{club.public_url}/match/{job.id}/equipe",
+                   data={"team": "7"}).status_code == 400
+
+
+def test_the_trend_appears_once_two_matches_are_designated(client):
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    for i, part in enumerate((0.45, 0.55, 0.62)):
+        job = _match_termine(api, club, f"Match {i}", 10 + i, part)
+        api.store.set_our_team(job.id, 0)
+
+    page = tc.get(club.public_url).text
+    assert "Tendance de la saison" in page
+    assert "<svg" in page
+    assert "Possession" in page and "Contrôle du terrain" in page
+
+
+def test_without_designation_the_trend_explains_what_to_do(client):
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    _match_termine(api, club, "Match", 10, 0.6)
+    page = tc.get(club.public_url).text
+    assert "Désignez votre équipe" in page
+    assert "<svg" not in page
+
+
+def test_the_trend_never_aggregates_individual_distances(client):
+    """Leur imprécision se cumulerait au lieu de se compenser."""
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    for i in range(2):
+        job = _match_termine(api, club, f"Match {i}", 10 + i, 0.5)
+        api.store.set_our_team(job.id, 0)
+    page = tc.get(club.public_url).text
+    assert "distances individuelles ne sont pas agrégées" in page

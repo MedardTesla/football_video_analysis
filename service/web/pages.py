@@ -12,6 +12,7 @@ from __future__ import annotations
 import html
 
 from ..jobs import Club, Job, JobState
+from ..season import Season
 
 STYLE = """
 :root {
@@ -93,6 +94,11 @@ footer { color:var(--muted); font-size:.78rem; border-top:1px solid var(--line);
          padding-top:1rem; }
 @media (prefers-reduced-motion:reduce) { * { animation:none !important; } }
 """
+
+# Mêmes teintes que le rapport, pour qu'une courbe et un rapport se lisent
+# comme un seul produit.
+TEAM_HEX_A = "#0080ff"
+TEAM_HEX_B = "#d4622a"
 
 LIBELLES = {
     JobState.QUEUED: ("En attente", "pastille--attente"),
@@ -176,6 +182,24 @@ def upload_form(erreur: str | None = None, club: Club | None = None) -> str:
     return _document(titre, corps)
 
 
+def _selecteur_equipe(club: Club, job: Job) -> str:
+    """Deux boutons : laquelle des deux équipes du rapport est celle du club.
+
+    Formulaire et non lien : désigner une équipe modifie un état, et un lien
+    cliqué par un aspirateur de pages le changerait à l'insu du club.
+    """
+    boutons = []
+    for equipe, libelle in ((0, "A"), (1, "B")):
+        actif = " actif" if job.our_team == equipe else ""
+        boutons.append(
+            f'<form method="post" action="{html.escape(club.public_url)}'
+            f'/match/{html.escape(job.id)}/equipe">'
+            f'<input type="hidden" name="team" value="{equipe}">'
+            f'<button class="equipe{actif}" type="submit">{libelle}</button></form>'
+        )
+    return f'<div class="equipes">{"".join(boutons)}</div>'
+
+
 ETIQUETTES_COURTES = {
     JobState.QUEUED: "En attente",
     JobState.PROCESSING: "En cours",
@@ -184,7 +208,74 @@ ETIQUETTES_COURTES = {
 }
 
 
-def club_page(club: Club, matchs: list[Job], en_attente: int) -> str:
+def _courbe(points: list, valeur, couleur: str, titre: str) -> str:
+    """Courbe d'une statistique d'équipe, match après match.
+
+    SVG écrit à la main : une bibliothèque de graphiques pèserait plus lourd
+    que toute la page, pour une courbe de quelques points lue sur un
+    téléphone.
+    """
+    valeurs = [(i, valeur(p)) for i, p in enumerate(points) if valeur(p) is not None]
+    if len(valeurs) < 2:
+        return ""
+
+    L, H, MARGE = 600, 130, 18
+    pas = (L - 2 * MARGE) / max(len(points) - 1, 1)
+    coords = [
+        (MARGE + i * pas, H - MARGE - v * (H - 2 * MARGE))
+        for i, v in valeurs
+    ]
+    ligne = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
+    pastilles = "".join(
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="{couleur}"/>' for x, y in coords
+    )
+    moyenne = sum(v for _, v in valeurs) / len(valeurs)
+    y_moy = H - MARGE - moyenne * (H - 2 * MARGE)
+
+    return f"""<figure class="courbe">
+ <figcaption>{titre} <b>{moyenne:.0%}</b> en moyenne</figcaption>
+ <svg viewBox="0 0 {L} {H}" role="img" aria-label="{titre} sur {len(valeurs)} matchs">
+  <line x1="{MARGE}" y1="{H - MARGE - 0.5 * (H - 2 * MARGE):.1f}"
+        x2="{L - MARGE}" y2="{H - MARGE - 0.5 * (H - 2 * MARGE):.1f}"
+        class="mediane"/>
+  <line x1="{MARGE}" y1="{y_moy:.1f}" x2="{L - MARGE}" y2="{y_moy:.1f}"
+        class="moyenne" stroke="{couleur}"/>
+  <polyline points="{ligne}" fill="none" stroke="{couleur}" stroke-width="2.5"
+            stroke-linejoin="round" stroke-linecap="round"/>
+  {pastilles}
+ </svg>
+ <div class="courbe__legende"><span>50 % = équilibre</span>
+  <span>{points[0].date} → {points[-1].date}</span></div>
+</figure>"""
+
+
+def _tendance(saison: Season, total_matchs: int) -> str:
+    if not saison.usable:
+        manquants = total_matchs - len(saison.points)
+        if manquants > 0:
+            return (
+                '<section class="panel"><h2>Tendance de la saison</h2>'
+                "<p class='lede'>Désignez votre équipe sur au moins deux matchs "
+                "analysés pour voir la tendance. Les libellés « équipe A » et "
+                "« équipe B » d'un rapport sont attribués automatiquement : rien "
+                "ne garantit qu'ils désignent la même équipe d'un match à "
+                "l'autre.</p></section>"
+            )
+        return ""
+
+    return f"""<section class="panel">
+ <h2>Tendance de la saison</h2>
+ <p class="lede">Sur {len(saison.points)} matchs où votre équipe est désignée.
+ Les distances individuelles ne sont pas agrégées : leur imprécision se
+ cumulerait au lieu de se compenser.</p>
+ {_courbe(saison.points, lambda p: p.possession, TEAM_HEX_A, "Possession")}
+ {_courbe(saison.points, lambda p: p.control, TEAM_HEX_B, "Contrôle du terrain")}
+</section>"""
+
+
+def club_page(
+    club: Club, matchs: list[Job], en_attente: int, saison: Season | None = None
+) -> str:
     """Espace du club : tous ses matchs derrière un seul lien.
 
     Sans cette page, un club qui analyse dix matchs conserve dix liens. La
@@ -200,17 +291,20 @@ def club_page(club: Club, matchs: list[Job], en_attente: int) -> str:
             if m.state is JobState.DONE:
                 lien = f'{html.escape(m.public_url)}/rapport'
                 action = f'<a href="{lien}">Voir le rapport</a>'
+                notre = _selecteur_equipe(club, m)
             else:
                 action = f'<a href="{html.escape(m.public_url)}">Suivre</a>'
+                notre = '<span class="muet">—</span>'
             lignes.append(
                 f"<tr><td>{html.escape(m.match_name)}</td>"
                 f'<td class="date">{date}</td>'
                 f'<td><span class="pastille {classe}"></span>{libelle}</td>'
+                f"<td>{notre}</td>"
                 f'<td class="action">{action}</td></tr>'
             )
         table = (
             '<div class="scroll"><table><thead><tr><th>Match</th><th>Déposé</th>'
-            "<th>État</th><th></th></tr></thead><tbody>"
+            "<th>État</th><th>Votre équipe</th><th></th></tr></thead><tbody>"
             + "".join(lignes)
             + "</tbody></table></div>"
         )
@@ -222,6 +316,7 @@ def club_page(club: Club, matchs: list[Job], en_attente: int) -> str:
   <span class="eyebrow">Espace du club</span>
   <h1>{html.escape(club.name)}</h1>
  </header>
+ {_tendance(saison, len(matchs)) if saison else ""}
  <div class="panel">{table}</div>
  <div class="actions">
   <a class="principal" href="{html.escape(club.public_url)}/deposer">Déposer un match</a>
