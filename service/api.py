@@ -22,12 +22,20 @@ from fastapi.responses import (
 )
 
 from .jobs import Club, Job, JobState, JobStore
+from . import logs
 from .fetch import LienRefuse, valider as valider_lien
 from .notify import looks_like_email
 from . import season as saison_mod
-from .settings import DATA_ROOT, STALE_SECONDS
+from .settings import (
+    DATA_ROOT, FILE_MAX, FILE_MAX_PAR_CLUB, LONGUEUR_CLUB, LONGUEUR_CONTACT,
+    LONGUEUR_LIEN, LONGUEUR_MATCH, STALE_SECONDS,
+)
 from .storage import Storage, UploadRefuse
 from .web import pages
+
+# Posé à l'import : uvicorn crée ses journaux avant de charger l'application,
+# et un filtre installé plus tard laisserait passer les premières requêtes.
+logs.install()
 
 app = FastAPI(title="Analyse de match", docs_url=None, redoc_url=None)
 
@@ -162,9 +170,32 @@ async def deposer(
     if not club.strip():
         return HTMLResponse(pages.upload_form(erreur="Nom du club manquant."), 400)
 
+    # Couper côté serveur : le maxlength du formulaire n'engage que les
+    # navigateurs, et un nom démesuré serait stocké puis renvoyé sur chaque
+    # page du club.
+    club = club.strip()[:LONGUEUR_CLUB]
+    match_name = match_name.strip()[:LONGUEUR_MATCH]
+    contact = contact.strip()[:LONGUEUR_CONTACT]
+    source_url = source_url.strip()[:LONGUEUR_LIEN]
+
+    if store.pending_count() >= FILE_MAX:
+        return HTMLResponse(
+            pages.upload_form(
+                erreur="Trop de matchs sont en attente. Réessayez dans quelques heures.",
+                club=espace,
+            ), 503,
+        )
+    if espace is not None and store.pending_for_club(espace.id) >= FILE_MAX_PAR_CLUB:
+        return HTMLResponse(
+            pages.upload_form(
+                erreur=f"Vous avez déjà {FILE_MAX_PAR_CLUB} matchs en cours "
+                       "d'analyse. Attendez qu'ils se terminent.",
+                club=espace,
+            ), 429,
+        )
+
     # Le lien est validé tout de suite : refuser après un téléversement de
     # plusieurs gigaoctets serait cruel, et le club ne saurait pas pourquoi.
-    source_url = source_url.strip()
     if source_url:
         try:
             source_url = valider_lien(source_url)
@@ -184,7 +215,6 @@ async def deposer(
 
     # Une adresse invalide est refusée plutôt qu'ignorée : le club croirait
     # être prévenu et attendrait un message qui ne viendrait jamais.
-    contact = contact.strip()
     if contact and not looks_like_email(contact):
         return HTMLResponse(
             pages.upload_form(erreur=f"Adresse e-mail invalide : {contact}", club=espace),

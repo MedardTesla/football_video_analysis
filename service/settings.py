@@ -25,3 +25,22 @@ STALE_SECONDS = 15 * 60
 # cliquables. Vide, le message montre un chemin relatif — inutilisable, mais
 # le club a de toute façon reçu le lien complet à l'écran.
 BASE_URL = os.environ.get("FA_BASE_URL", "").rstrip("/")
+
+
+# Longueurs maximales des champs libres. Le `maxlength` d'un formulaire est
+# une aide à la saisie, pas une contrainte : rien n'empêche d'envoyer la
+# requête directement. Sans coupe côté serveur, un nom de 50 000 caractères
+# est stocké puis renvoyé sur chaque page.
+LONGUEUR_CLUB = 80
+LONGUEUR_MATCH = 120
+LONGUEUR_CONTACT = 120
+LONGUEUR_LIEN = 500
+
+# Un club ne peut pas avoir plus de matchs en attente que cela. Limite de
+# produit autant que garde-fou : un club qui dépose sa saison entière d'un
+# coup monopoliserait la file, et ses propres rapports arriveraient plus tard.
+FILE_MAX_PAR_CLUB = 3
+
+# Plafond global de la file. Au-delà, le service refuse poliment plutôt que
+# d'accepter des matchs qu'il ne traitera pas avant des jours.
+FILE_MAX = 50

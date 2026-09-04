@@ -304,3 +304,72 @@ def test_the_form_offers_both_ways(client):
     page = tc.get("/").text
     assert 'name="source_url"' in page and 'name="video"' in page
     assert "déjà en ligne" in page
+
+
+# --- limites d'entrée et de file ---------------------------------------------
+
+def test_an_absurd_club_name_is_truncated(client, dns_public):
+    """Le maxlength du formulaire n'engage que les navigateurs : sans coupe
+    côté serveur, un nom de 50 000 caractères est stocké puis renvoyé sur
+    chaque page du club."""
+    from service.settings import LONGUEUR_CLUB
+
+    tc, api = client
+    tc.post("/matches", data={
+        "club": "A" * 50_000, "match_name": "M" * 50_000,
+        "source_url": "https://exemple.fr/v.mp4",
+    })
+    job = api.store.matches_of_club(
+        api.store.list_for_club("A" * LONGUEUR_CLUB)[0].club_id
+    )[0]
+    assert len(job.club) == LONGUEUR_CLUB
+    assert len(job.match_name) <= 120
+
+
+def test_a_club_cannot_flood_the_queue(client, dns_public):
+    """Un club déposant sa saison entière monopoliserait la file, et ses
+    propres rapports arriveraient plus tard."""
+    from service.settings import FILE_MAX_PAR_CLUB
+
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    for i in range(FILE_MAX_PAR_CLUB):
+        api.store.create("US Valmont", f"M{i}", "/tmp/v.mp4", club_id=club.id)
+
+    reponse = tc.post("/matches", data={
+        "match_name": "De trop", "club_id": club.id, "club_token": club.token,
+        "source_url": "https://exemple.fr/v.mp4",
+    })
+    assert reponse.status_code == 429
+    assert "déjà" in reponse.text
+
+
+def test_a_finished_match_frees_the_slot(client, dns_public):
+    from service.settings import FILE_MAX_PAR_CLUB
+
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    faits = [api.store.create("US Valmont", f"M{i}", "/tmp/v.mp4", club_id=club.id)
+             for i in range(FILE_MAX_PAR_CLUB)]
+    api.store.update(faits[0].id, state=JobState.DONE)
+
+    reponse = tc.post("/matches", data={
+        "match_name": "Suivant", "club_id": club.id, "club_token": club.token,
+        "source_url": "https://exemple.fr/v.mp4",
+    })
+    assert reponse.status_code == 201
+
+
+def test_a_saturated_queue_refuses_politely(client, dns_public, monkeypatch):
+    """Accepter des matchs qu'on ne traitera pas avant des jours serait pire
+    que refuser."""
+    import service.api as api_mod
+
+    monkeypatch.setattr(api_mod, "FILE_MAX", 0)
+    tc, _ = client
+    reponse = tc.post("/matches", data={
+        "club": "US Valmont", "match_name": "M",
+        "source_url": "https://exemple.fr/v.mp4",
+    })
+    assert reponse.status_code == 503
+    assert "quelques heures" in reponse.text

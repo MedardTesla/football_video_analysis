@@ -231,6 +231,13 @@ Décisions structurantes :
   derrière lui indéfiniment.
 - **`/sante` répond 503 si des matchs sont bloqués ou si le disque sature**,
   pour qu'une sonde externe détecte la panne sans lire le corps de la réponse.
+- **Les jetons ne doivent jamais atteindre les journaux.** Ils voyagent dans
+  l'adresse, qu'uvicorn journalise telle quelle. `service/logs.install()` pose
+  un filtre qui masque le segment, à l'import de `api.py` — plus tard, les
+  premières requêtes passeraient. Le filtre traite aussi `record.args` :
+  uvicorn journalise l'adresse en argument de formatage, pas dans le message.
+- **Les longueurs sont coupées côté serveur.** Le `maxlength` d'un formulaire
+  n'engage que les navigateurs.
 - **L'espace disque est protégé sur trois fronts** : réserve de 5 Go vérifiée
   avant *et pendant* l'écriture d'un dépôt, rétention de 90 jours purgée par le
   worker. Le dépôt étant ouvert sans compte, un disque plein arrêterait le

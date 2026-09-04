@@ -338,6 +338,17 @@ class JobStore:
                 (*champs.values(), job_id),
             )
 
+    def pending_for_club(self, club_id: str) -> int:
+        """Matchs d'un club encore à traiter ou en cours."""
+        if not club_id:
+            return 0
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT COUNT(*) n FROM jobs WHERE club_id = ? AND state IN (?, ?)",
+                (club_id, JobState.QUEUED.value, JobState.PROCESSING.value),
+            ).fetchone()
+        return int(row["n"])
+
     def pending_count(self) -> int:
         """Nombre de matchs en attente, sans en réserver aucun."""
         with self._connect() as db:

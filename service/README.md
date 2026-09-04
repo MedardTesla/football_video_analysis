@@ -82,6 +82,34 @@ Le paramètre est dans `video/io.py` : `LARGEUR_LIVREE` et `CRF`. Monter la
 qualité à CRF 24 ou revenir en 1080p reste possible pour un client qui le
 demande, au prix du poids.
 
+## Journaux
+
+Les adresses portent le jeton d'accès. Le journal d'accès d'uvicorn les écrit
+telles quelles : sans précaution, l'hébergeur, l'agrégateur de journaux et
+tout administrateur voient les jetons de **tous** les clubs, sans avoir eu à
+les demander.
+
+`service/logs.py` masque ce segment, dans le message comme dans les arguments
+de formatage — uvicorn journalise l'adresse en argument, et ne filtrer que le
+message laisserait tout passer. Le reste du chemin est conservé, faute de quoi
+on ne distinguerait plus un rapport d'une vidéo.
+
+Le filtre est installé à l'import de `api.py` : uvicorn crée ses journaux
+avant de charger l'application, et l'installer plus tard laisserait passer les
+premières requêtes.
+
+## Limites d'entrée et de file
+
+Le `maxlength` d'un formulaire est une aide à la saisie, pas une contrainte :
+rien n'empêche d'envoyer la requête directement. Sans coupe côté serveur, un
+nom de club de 50 000 caractères était stocké puis renvoyé sur chaque page —
+mesuré à 152 Ko au lieu de 6.
+
+Deux plafonds protègent la file : trois matchs simultanés par club, cinquante
+au total. Le premier est autant une règle de produit qu'un garde-fou — un club
+déposant sa saison entière monopoliserait la file et recevrait ses propres
+rapports plus tard.
+
 ## Protection du disque
 
 Le dépôt est ouvert sans compte : n'importe qui peut envoyer 8 Go. Trois

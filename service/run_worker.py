@@ -5,6 +5,7 @@ import logging
 
 from football_analysis.config import Config
 
+from . import logs
 from .jobs import JobStore
 from .notify import from_environment
 from .settings import DATA_ROOT
@@ -12,6 +13,7 @@ from .storage import Storage
 
 
 def main() -> int:
+    logs.install()
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
