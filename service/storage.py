@@ -23,6 +23,11 @@ TAILLE_MAX = 8 * 1024**3      # 8 Go : environ 2 h en 1080p
 # déjà en cours et dont le travail serait perdu.
 RESERVE_DISQUE = 5 * 1024**3
 
+# Un dossier sans match en base n'est considéré orphelin qu'après ce délai.
+# La liste des matchs connus est lue à un instant donné : un dépôt arrivé
+# juste après n'y figure pas, et sa vidéo serait effacée pendant l'envoi.
+DELAI_ORPHELIN = 3600
+
 # Un rapport reste consultable trois mois. Au-delà, un club l'a lu ou ne le
 # lira pas, et la vidéo annotée pèse plus lourd que tout le reste.
 RETENTION_JOURS = 90
@@ -100,19 +105,34 @@ class Storage:
         """Espace libre sur le disque qui porte le stockage."""
         return shutil.disk_usage(self.root).free
 
-    def purge_orphans(self, connus: set[str]) -> list[str]:
+    def purge_orphans(
+        self, connus: set[str], age_minimal_s: float = DELAI_ORPHELIN
+    ) -> list[str]:
         """Supprime les dossiers dont le match n'existe plus en base.
 
         Une panne du worker, un arrêt brutal ou une suppression pendant
         l'analyse laissent des fichiers sans ligne correspondante. La purge
         par ancienneté finit par les prendre, mais quatre-vingt-dix jours plus
         tard : d'ici là ils occupent le disque sans que rien ne les désigne.
+
+        `age_minimal_s` protège d'une course : la liste des matchs connus est
+        lue à un instant donné, et un dépôt arrivé juste après n'y figure pas.
+        Sans ce délai, la vidéo d'un club serait effacée pendant qu'il la
+        téléverse. Un véritable orphelin, lui, est toujours ancien.
         """
+        limite = time.time() - age_minimal_s
         supprimes = []
         for dossier in self.root.iterdir():
-            if dossier.is_dir() and dossier.name not in connus:
-                shutil.rmtree(dossier, ignore_errors=True)
-                supprimes.append(dossier.name)
+            if not dossier.is_dir() or dossier.name in connus:
+                continue
+            recent = max(
+                (f.stat().st_mtime for f in dossier.rglob("*") if f.is_file()),
+                default=dossier.stat().st_mtime,
+            )
+            if recent > limite:
+                continue
+            shutil.rmtree(dossier, ignore_errors=True)
+            supprimes.append(dossier.name)
         return supprimes
 
     def purge_older_than(self, days: int = RETENTION_JOURS) -> list[str]:

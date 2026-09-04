@@ -260,6 +260,16 @@ def test_a_finished_analysis_stops_polling(client):
 
 # --- Reprise après panne -----------------------------------------------------
 
+def _vieillir_dossier(chemin, secondes=7200):
+    """Fait comme si le dossier datait de plusieurs heures."""
+    import os
+    import time
+
+    quand = time.time() - secondes
+    for f in list(chemin.rglob("*")) + [chemin]:
+        os.utime(f, (quand, quand))
+
+
 def _vieillir(store, job_id, secondes):
     """Fait comme si le job n'avait plus donné signe de vie depuis N secondes."""
     import sqlite3
@@ -832,7 +842,9 @@ def test_orphaned_folders_are_removed(store, storage):
     quatre-vingt-dix jours plus tard."""
     job = store.create("Club", "Match", "/tmp/v.mp4")
     (storage.job_dir(job.id) / "rapport.html").write_text("connu")
-    (storage.job_dir("fantome") / "rapport.html").write_text("orphelin")
+    fantome = storage.job_dir("fantome")
+    (fantome / "rapport.html").write_text("orphelin")
+    _vieillir_dossier(fantome)
 
     assert storage.purge_orphans(store.all_ids()) == ["fantome"]
     assert (storage.root / job.id).exists()
@@ -847,3 +859,30 @@ def test_all_ids_lists_every_match(store):
     a = store.create("Club", "A", "/tmp/v.mp4")
     b = store.create("Club", "B", "/tmp/v.mp4")
     assert store.all_ids() == {a.id, b.id}
+
+
+def test_a_fresh_upload_is_never_mistaken_for_an_orphan(store, storage):
+    """La liste des matchs connus est lue à un instant donné : un dépôt
+    arrivé juste après n'y figure pas. Sans délai de grâce, la vidéo d'un
+    club serait effacée pendant qu'il la téléverse."""
+    connus = store.all_ids()
+
+    nouveau = store.create("US Valmont", "Match", "/tmp/v.mp4")
+    (storage.job_dir(nouveau.id) / "source.mp4").write_bytes(b"video")
+
+    assert storage.purge_orphans(connus) == []
+    assert (storage.root / nouveau.id / "source.mp4").exists()
+
+
+def test_an_old_orphan_is_still_removed(store, storage):
+    import os
+    import time
+
+    dossier = storage.job_dir("fantome")
+    fichier = dossier / "rapport.html"
+    fichier.write_text("orphelin")
+    vieux = time.time() - 7200
+    os.utime(fichier, (vieux, vieux))
+    os.utime(dossier, (vieux, vieux))
+
+    assert storage.purge_orphans(store.all_ids()) == ["fantome"]

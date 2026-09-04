@@ -125,6 +125,10 @@ compris ceux dont l'analyse est en cours et dont le travail serait perdu.
 - **Purge des orphelins au démarrage** : un arrêt brutal ou une suppression
   pendant l'analyse laisse des fichiers sans ligne en base. La purge par
   ancienneté finirait par les prendre, mais quatre-vingt-dix jours plus tard.
+  Un dossier n'est considéré orphelin qu'après une heure sans modification :
+  la liste des matchs connus est lue à un instant donné, et un dépôt arrivé
+  juste après n'y figure pas — sans ce délai, la vidéo d'un club serait
+  effacée pendant qu'il la téléverse.
 - **`/sante` répond 503** dès que la réserve est entamée, avec l'espace libre
   en gigaoctets.
 

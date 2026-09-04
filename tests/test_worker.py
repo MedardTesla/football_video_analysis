@@ -341,8 +341,15 @@ def test_a_match_still_present_is_finalised_normally(contexte, tmp_path):
 
 
 def test_startup_removes_orphaned_folders(contexte, tmp_path):
+    import os
+    import time
+
     store, storage, _, _ = contexte
-    (storage.job_dir("fantome") / "rapport.html").write_text("orphelin")
+    fantome = storage.job_dir("fantome")
+    (fantome / "rapport.html").write_text("orphelin")
+    vieux = time.time() - 7200
+    for f in list(fantome.rglob("*")) + [fantome]:
+        os.utime(f, (vieux, vieux))
 
     worker.serve(store, storage, Config(), once=True,
                  run=_pipeline_reussi(tmp_path))
