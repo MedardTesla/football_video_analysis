@@ -30,6 +30,7 @@ from .pitch.mask import on_pitch, playable_area
 from .pitch.view import HomographyCache
 from .render import annotators
 from .teams.classifier import UNASSIGNED, TeamClassifier, assign_goalkeeper
+from .tracking.stitching import Stitcher
 from .tracking.tracker import UNTRACKED, PersonTracker, ball_position, is_tracked
 from .video import io as video_io
 
@@ -126,6 +127,7 @@ def run(
     homography = HomographyCache(
         max_age_frames=int(config.pitch.homography_max_age_s * info.fps)
     )
+    recolleur = Stitcher()
     last_pitch_xy: np.ndarray | None = None
     last_teams: np.ndarray = np.empty(0, dtype=int)
     turf: np.ndarray | None = None
@@ -193,9 +195,11 @@ def run(
                 ):
                     if not connu:
                         continue
-                    stats.update_player(
-                        int(track_id), xy, None if team == UNASSIGNED else int(team)
-                    )
+                    equipe = None if team == UNASSIGNED else int(team)
+                    stats.update_player(int(track_id), xy, equipe)
+                    # `frame_index` compte les images traitées : c'est l'unité
+                    # qu'attend le recolleur.
+                    recolleur.observe(int(track_id), frame_index, xy, equipe)
 
                 ball_xy = ball_position(ball)
                 ball_pitch = (
@@ -266,6 +270,10 @@ def run(
 
     if on_progress:
         on_progress(1.0)
+
+    # Recoller avant de publier : un joueur perdu puis retrouvé ne doit pas
+    # figurer deux fois avec la moitié de sa distance chacune.
+    stats.merge_identities(recolleur.mapping(fps=info.fps))
 
     payload = stats.to_dict()
     payload["sampled_fps"] = round(info.fps, 2)

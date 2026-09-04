@@ -71,6 +71,31 @@ class MatchStats:
         stats.distance_m += step_m
         stats.top_speed_ms = max(stats.top_speed_ms, speed)
 
+    def merge_identities(self, mapping: dict[int, int]) -> None:
+        """Fusionne les pistes recollées en une seule identité.
+
+        Les distances s'additionnent ; l'intervalle non observé entre deux
+        segments n'est pas comblé, faute d'avoir été mesuré. La vitesse de
+        pointe est le maximum, pas la moyenne : c'est une pointe.
+        """
+        fusionnes: dict[int, PlayerStats] = {}
+        for track_id, stats in self.players.items():
+            racine = mapping.get(track_id, track_id)
+            garde = fusionnes.get(racine)
+            if garde is None:
+                fusionnes[racine] = PlayerStats(
+                    track_id=racine, team=stats.team,
+                    distance_m=stats.distance_m, top_speed_ms=stats.top_speed_ms,
+                    frames_seen=stats.frames_seen,
+                )
+                continue
+            garde.distance_m += stats.distance_m
+            garde.top_speed_ms = max(garde.top_speed_ms, stats.top_speed_ms)
+            garde.frames_seen += stats.frames_seen
+            if garde.team is None:
+                garde.team = stats.team
+        self.players = fusionnes
+
     def mark_measured(self) -> None:
         self.measured_frames += 1
 

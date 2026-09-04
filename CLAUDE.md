@@ -112,6 +112,16 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
   sont assignés de force à une équipe — vérifié sur match réel. Un rejet par
   distance au centroïde a été essayé avant et n'écartait rien : présents à
   l'ajustement, les arbitres tombent dans la dispersion normale.
+- **Les pistes sont recollées avant publication.** `tracking/stitching.py`
+  rattache deux segments d'un même joueur — pas de chevauchement temporel,
+  écart bref, déplacement physiquement possible dans l'espace du terrain, même
+  équipe. Sans cela, un joueur perdu puis retrouvé figure deux fois avec la
+  moitié de sa distance chacune. `Stitcher.observe` attend l'index d'**image
+  traitée**, jamais celui de la source : mélanger les deux unités double
+  silencieusement tous les écarts et empêche tout recollement.
+- **Le trajet entre deux segments n'est jamais comblé.** Il n'a pas été
+  observé ; l'inventer fabriquerait la donnée que le recollement doit rendre
+  crédible.
 - **Une détection sans identifiant de piste ne fait pas une identité.** BoT-SORT
   rend -1 tant qu'une piste n'est pas confirmée ; `MatchStats.update_player`
   refuse désormais les identifiants négatifs. Les accepter fusionnait tous les

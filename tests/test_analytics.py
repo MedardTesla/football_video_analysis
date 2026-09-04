@@ -99,3 +99,58 @@ def test_control_ignores_frames_without_both_teams():
     stats.update_control({})
     assert stats.control_frames == 0
     assert stats.control_share() == {}
+
+
+def test_merging_identities_sums_the_distances():
+    """Un joueur perdu puis retrouvé ne doit pas figurer deux fois avec la
+    moitié de sa distance chacune."""
+    stats = MatchStats(fps=12.0)
+    stats.update_player(1, np.array([0.0, 0.0]), team=0)
+    stats.update_player(1, np.array([40.0, 0.0]), team=0)      # 0,4 m
+    stats.update_player(7, np.array([200.0, 0.0]), team=0)
+    stats.update_player(7, np.array([260.0, 0.0]), team=0)     # 0,6 m
+
+    stats.merge_identities({7: 1})
+    assert set(stats.players) == {1}
+    assert stats.players[1].distance_m == pytest.approx(1.0)
+
+
+def test_merging_keeps_the_peak_speed_not_the_average():
+    stats = MatchStats(fps=12.0)
+    stats.update_player(1, np.array([0.0, 0.0]), team=0)
+    stats.update_player(1, np.array([20.0, 0.0]), team=0)
+    stats.update_player(7, np.array([0.0, 0.0]), team=0)
+    stats.update_player(7, np.array([70.0, 0.0]), team=0)
+    rapide = stats.players[7].top_speed_ms
+
+    stats.merge_identities({7: 1})
+    assert stats.players[1].top_speed_ms == pytest.approx(rapide)
+
+
+def test_merging_does_not_invent_the_unobserved_gap():
+    """Le trajet entre deux segments n'a pas été mesuré : l'ajouter
+    fabriquerait la donnée que le recollement doit rendre crédible."""
+    stats = MatchStats(fps=12.0)
+    stats.update_player(1, np.array([0.0, 0.0]), team=0)
+    stats.update_player(1, np.array([40.0, 0.0]), team=0)
+    stats.update_player(7, np.array([5000.0, 0.0]), team=0)    # 50 m plus loin
+    stats.update_player(7, np.array([5040.0, 0.0]), team=0)
+
+    stats.merge_identities({7: 1})
+    assert stats.players[1].distance_m == pytest.approx(0.8)
+
+
+def test_merging_recovers_a_team_from_the_other_segment():
+    stats = MatchStats(fps=12.0)
+    stats.update_player(1, np.array([0.0, 0.0]), team=None)
+    stats.update_player(7, np.array([0.0, 0.0]), team=1)
+    stats.merge_identities({7: 1})
+    assert stats.players[1].team == 1
+
+
+def test_merging_nothing_leaves_the_players_untouched():
+    stats = MatchStats(fps=12.0)
+    stats.update_player(1, np.array([0.0, 0.0]), team=0)
+    stats.update_player(2, np.array([0.0, 0.0]), team=1)
+    stats.merge_identities({})
+    assert set(stats.players) == {1, 2}
