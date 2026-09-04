@@ -112,6 +112,11 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
   sont assignés de force à une équipe — vérifié sur match réel. Un rejet par
   distance au centroïde a été essayé avant et n'écartait rien : présents à
   l'ajustement, les arbitres tombent dans la dispersion normale.
+- **Le rapport est régénérable sans la vidéo.** `report.write` ne relit que le
+  JSON de statistiques, ce qui permet à l'API de le réécrire quand le club
+  nomme ses joueurs. `report.py` ne dépend d'aucune bibliothèque de calcul :
+  l'importer depuis l'API ne casse pas la séparation vérifiée par
+  `test_the_api_does_not_load_the_machine_learning_stack`.
 - **Les pistes sont recollées avant publication.** `tracking/stitching.py`
   rattache deux segments d'un même joueur — pas de chevauchement temporel,
   écart bref, déplacement physiquement possible dans l'espace du terrain, même

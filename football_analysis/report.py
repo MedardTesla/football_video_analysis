@@ -56,10 +56,17 @@ def _possession_block(possession: dict[str, float]) -> str:
 </div>"""
 
 
-def _players_block(players: list[dict]) -> str:
+def _players_block(players: list[dict], names: dict[str, str] | None = None) -> str:
+    """Tableau des joueurs.
+
+    Le numéro affiché vient du traqueur et ne veut rien dire pour un
+    entraîneur : quand le club a nommé une piste, le nom prend sa place et le
+    numéro passe en second.
+    """
     if not players:
         return '<p class="empty">Aucun joueur suivi sur cette vidéo.</p>'
 
+    names = names or {}
     furthest = max((p["distance_m"] for p in players), default=1.0) or 1.0
     rows = []
     for player in players:
@@ -68,9 +75,15 @@ def _players_block(players: list[dict]) -> str:
         label = TEAM_LABELS[team % 2] if team is not None else "Non attribué"
         km = player["distance_m"] / 1000
         kmh = player["top_speed_ms"] * 3.6
+        nom = names.get(str(player["track_id"]))
+        identite = (
+            f'<span class="nom">{html.escape(nom)}</span>'
+            f'<span class="piste">{player["track_id"]}</span>'
+            if nom else f'{player["track_id"]}'
+        )
         rows.append(
             "<tr>"
-            f'<td class="jersey">{player["track_id"]}</td>'
+            f'<td class="jersey">{identite}</td>'
             f'<td class="team"><i class="dot" style="background:{colour}"></i>'
             f'<span class="team__name">{label}</span></td>'
             f'<td class="figure">{km:.1f}<abbr>km</abbr>'
@@ -82,7 +95,7 @@ def _players_block(players: list[dict]) -> str:
         )
     return (
         '<div class="scroll"><table class="players"><thead><tr>'
-        "<th>N°</th><th>Équipe</th><th>Distance</th><th>Pointe</th><th>Temps</th>"
+        "<th>Joueur</th><th>Équipe</th><th>Distance</th><th>Pointe</th><th>Temps</th>"
         "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
     )
 
@@ -267,7 +280,10 @@ tbody td { padding:.6rem .5rem; border-top:1px solid var(--line-soft);
            vertical-align:middle; }
 tbody tr:first-child td { border-top:none; }
 .jersey { font:600 1.35rem/1 "Barlow Condensed","Arial Narrow",sans-serif;
-          color:var(--muted); font-variant-numeric:tabular-nums; width:2.5rem; }
+          color:var(--muted); font-variant-numeric:tabular-nums; }
+.jersey .nom { display:block; font:600 .95rem/1.25 "IBM Plex Sans",sans-serif;
+               color:var(--ink); }
+.jersey .piste { font-size:.85rem; color:var(--muted); }
 .team { white-space:nowrap; }
 .team .dot { display:inline-block; margin-right:.5rem; vertical-align:middle; }
 .team__name { font-size:.9rem; }
@@ -314,7 +330,10 @@ footer { color:var(--muted); font-size:.78rem; padding:.5rem 0 2rem;
 """
 
 
-def render(stats: dict, meta: ReportMeta, radar_png: Path | None = None) -> str:
+def render(
+    stats: dict, meta: ReportMeta, radar_png: Path | None = None,
+    names: dict[str, str] | None = None,
+) -> str:
     """Page HTML complète et autonome."""
     return (
         '<!doctype html>\n<html lang="fr"><head><meta charset="utf-8">\n'
@@ -326,12 +345,15 @@ def render(stats: dict, meta: ReportMeta, radar_png: Path | None = None) -> str:
         "family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&"
         'family=IBM+Plex+Sans:wght@400;600&display=swap">\n'
         f"<style>{STYLE}</style></head>\n<body>\n"
-        + render_body(stats, meta, radar_png)
+        + render_body(stats, meta, radar_png, names)
         + "\n</body></html>\n"
     )
 
 
-def render_body(stats: dict, meta: ReportMeta, radar_png: Path | None = None) -> str:
+def render_body(
+    stats: dict, meta: ReportMeta, radar_png: Path | None = None,
+    names: dict[str, str] | None = None,
+) -> str:
     """Contenu seul, sans enveloppe de document."""
     radar = ""
     if radar_png and Path(radar_png).exists():
@@ -369,7 +391,7 @@ def render_body(stats: dict, meta: ReportMeta, radar_png: Path | None = None) ->
  <section><h2>Possession</h2>{_possession_block(stats.get("possession", {}))}</section>
  {_control_block(stats)}
  {radar}
- <section><h2>Joueurs</h2>{_players_block(stats.get("players", []))}</section>
+ <section><h2>Joueurs</h2>{_players_block(stats.get("players", []), names)}</section>
  {notes}
  <footer>Analyse automatisée à partir de la vidéo du match. Les distances et
  vitesses sont des estimations, dépendantes de la qualité de l'image.</footer>
@@ -377,10 +399,11 @@ def render_body(stats: dict, meta: ReportMeta, radar_png: Path | None = None) ->
 
 
 def write(
-    stats_path: Path, output: Path, meta: ReportMeta, radar_png: Path | None = None
+    stats_path: Path, output: Path, meta: ReportMeta,
+    radar_png: Path | None = None, names: dict[str, str] | None = None,
 ) -> Path:
     stats = json.loads(Path(stats_path).read_text())
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(render(stats, meta, radar_png), encoding="utf-8")
+    output.write_text(render(stats, meta, radar_png, names), encoding="utf-8")
     return output

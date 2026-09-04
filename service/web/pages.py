@@ -326,6 +326,64 @@ def club_page(
     return _document(club.name, corps)
 
 
+# Une piste vue moins que cette part du temps mesuré n'est pas proposée au
+# nommage : c'est un fragment, pas un joueur, et l'entraîneur ne saurait pas
+# lequel désigner.
+PART_MINIMALE = 0.10
+
+
+def nommables(stats: dict, part_minimale: float = PART_MINIMALE) -> list[dict]:
+    """Pistes assez durables pour qu'un entraîneur les reconnaisse."""
+    joueurs = stats.get("players") or []
+    if not joueurs:
+        return []
+    plus_longue = max(j["seconds_seen"] for j in joueurs)
+    seuil = plus_longue * part_minimale
+    retenus = [j for j in joueurs if j["seconds_seen"] >= seuil]
+    return sorted(retenus, key=lambda j: -j["seconds_seen"])
+
+
+def naming_page(job: Job, joueurs: list[dict]) -> str:
+    """Formulaire de nommage des joueurs d'un match."""
+    if not joueurs:
+        lignes = ("<p class='lede'>Aucune piste assez suivie pour être nommée "
+                  "sur ce match.</p>")
+    else:
+        rangs = []
+        for j in joueurs:
+            equipe = j.get("team")
+            couleur = TEAM_HEX_A if equipe == 0 else TEAM_HEX_B if equipe == 1 else "#a9b0a9"
+            valeur = html.escape(job.player_names.get(str(j["track_id"]), ""))
+            rangs.append(f"""<tr>
+   <td class="jersey">{j["track_id"]}</td>
+   <td><span class="pastille" style="background:{couleur}"></span></td>
+   <td class="date">{j["distance_m"] / 1000:.1f} km · {j["seconds_seen"] / 60:.0f} min</td>
+   <td><input type="text" name="nom_{j["track_id"]}" value="{valeur}"
+              maxlength="60" placeholder="Nom du joueur"></td>
+  </tr>""")
+        lignes = ('<div class="scroll"><table><thead><tr><th>N°</th><th></th>'
+                  "<th>Relevé</th><th>Nom</th></tr></thead><tbody>"
+                  + "".join(rangs) + "</tbody></table></div>")
+
+    corps = f"""
+ <header>
+  <span class="eyebrow">{html.escape(job.club)}</span>
+  <h1>Nommer les joueurs</h1>
+ </header>
+ <p class="lede">Les numéros sont attribués automatiquement et ne
+ correspondent pas aux maillots. Repérez chaque joueur dans la vidéo annotée,
+ puis inscrivez son nom ici : il remplacera le numéro dans le rapport.</p>
+ <form method="post" action="{html.escape(job.public_url)}/joueurs">
+  <div class="panel">{lignes}</div>
+  <button type="submit">Enregistrer les noms</button>
+ </form>
+ <div class="actions">
+  <a class="secondaire" href="{html.escape(job.public_url)}/video">Vidéo annotée</a>
+  <a class="secondaire" href="{html.escape(job.public_url)}/rapport">Rapport</a>
+ </div>"""
+    return _document(f"Nommer — {job.match_name}", corps)
+
+
 def upload_done(job: Job, en_attente: int, club: Club | None = None) -> str:
     if job.contact:
         avis = (f"<p>Vous serez prévenu à <strong>{html.escape(job.contact)}</strong> "
@@ -368,6 +426,7 @@ def status_page(job: Job, en_attente: int) -> str:
         actions = f"""<div class="actions">
    <a class="principal" href="{html.escape(job.public_url)}/rapport">Voir le rapport</a>
    <a class="secondaire" href="{html.escape(job.public_url)}/video">Vidéo annotée</a>
+   <a class="secondaire" href="{html.escape(job.public_url)}/joueurs">Nommer les joueurs</a>
   </div>"""
     elif job.state is JobState.FAILED:
         detail = f"<p class='erreur'>{html.escape(job.error or 'Cause inconnue.')}</p>"

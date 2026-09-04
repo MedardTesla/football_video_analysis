@@ -756,3 +756,71 @@ def test_the_trend_never_aggregates_individual_distances(client):
         api.store.set_our_team(job.id, 0)
     page = tc.get(club.public_url).text
     assert "distances individuelles ne sont pas agrégées" in page
+
+
+# --- Nommage des joueurs -----------------------------------------------------
+
+def _match_avec_stats(api, nom="Match"):
+    """Match terminé, avec rapport et statistiques sur disque."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    job = api.store.create("US Valmont", nom, "/tmp/v.mp4")
+    dossier = api.storage.job_dir(job.id)
+    stats = {
+        "coverage": 0.9, "possession": {"0": 0.55, "1": 0.45},
+        "players": [
+            {"track_id": 4, "team": 0, "distance_m": 9800.0,
+             "top_speed_ms": 8.2, "seconds_seen": 5200.0},
+            {"track_id": 9, "team": 1, "distance_m": 8700.0,
+             "top_speed_ms": 9.0, "seconds_seen": 5000.0},
+        ],
+    }
+    (dossier / "analyse.json").write_text(_json.dumps(stats))
+    rapport = dossier / "rapport.html"
+    rapport.write_text("<h1>Rapport</h1>", encoding="utf-8")
+    api.store.update(job.id, state=JobState.DONE, stats=stats,
+                     report_path=str(rapport))
+    return api.store.get(job.id)
+
+
+def test_the_naming_page_lists_the_durable_tracks(client):
+    tc, api = client
+    job = _match_avec_stats(api)
+    page = tc.get(f"{job.public_url}/joueurs")
+    assert page.status_code == 200
+    assert 'name="nom_4"' in page.text and 'name="nom_9"' in page.text
+
+
+def test_naming_is_refused_before_the_analysis_ends(client):
+    tc, api = client
+    _deposer(tc)
+    job = api.store.list_for_club("US Valmont")[0]
+    assert tc.get(f"{job.public_url}/joueurs").status_code == 409
+
+
+def test_saving_names_rewrites_the_report(client):
+    """Sans régénération, les noms ne vivraient que dans le formulaire."""
+    tc, api = client
+    job = _match_avec_stats(api)
+
+    reponse = tc.post(f"{job.public_url}/joueurs",
+                      data={"nom_4": "Kossi Adjovi", "nom_9": ""},
+                      follow_redirects=False)
+    assert reponse.status_code == 303
+    assert api.store.get(job.id).player_names == {"4": "Kossi Adjovi"}
+
+    from pathlib import Path
+    assert "Kossi Adjovi" in Path(job.report_path).read_text(encoding="utf-8")
+
+
+def test_names_need_the_match_token(client):
+    tc, api = client
+    job = _match_avec_stats(api)
+    assert tc.post(f"/m/{job.id}/faux/joueurs", data={"nom_4": "X"}).status_code == 404
+
+
+def test_the_finished_page_offers_naming(client):
+    tc, api = client
+    job = _match_avec_stats(api)
+    assert "Nommer les joueurs" in tc.get(job.public_url).text

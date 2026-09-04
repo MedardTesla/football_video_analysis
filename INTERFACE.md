@@ -26,6 +26,7 @@ calcul : elle ne serait qu'une autre façon d'atteindre le même service.
 | Confirmation | après envoi | montre le lien privé, rappelle de le garder |
 | Suivi | `/m/{id}/{jeton}` | état, jauge de progression, mise à jour seule |
 | Rapport | `/m/{id}/{jeton}/rapport` | le livrable, chiffres et vue tactique |
+| Nommage | `/m/{id}/{jeton}/joueurs` | associer un nom à chaque piste |
 | Espace du club | `/c/{id}/{jeton}` | tous les matchs du club, un seul lien |
 | Dépôt rattaché | `/c/{id}/{jeton}/deposer` | le match rejoint l'espace |
 
@@ -78,6 +79,19 @@ seul moyen de corriger une erreur.
 Les distances individuelles ne sont pas agrégées : à la précision actuelle,
 leur imprécision se cumulerait au lieu de se compenser.
 
+## Les noms de joueurs
+
+Les numéros affichés viennent du traqueur et ne correspondent pas aux
+maillots : un entraîneur ne reconnaît pas « joueur 17 ». Il repère chaque
+joueur dans la vidéo annotée, saisit son nom, et le rapport est réécrit.
+
+Seules les pistes durables sont proposées — au moins un dixième du temps de la
+plus longue. Nommer un fragment de trois secondes ajouterait du bruit au lieu
+d'en retirer, et l'entraîneur ne saurait pas lequel désigner.
+
+Le numéro reste affiché à côté du nom : c'est lui qui figure dans la vidéo
+annotée, et le club doit pouvoir faire le lien.
+
 ## Ce que l'interface dit, et pourquoi
 
 L'enjeu n'est pas décoratif. Un rapport d'analyse automatique est cru sur
@@ -106,7 +120,8 @@ Assumé pour l'instant, à traiter quand un client le demandera :
 
 ## Ordre proposé
 
-1. **Noms des joueurs** en remplacement des numéros de piste. Un entraîneur ne
-   reconnaît pas « joueur 17 ».
+1. **Report des noms d'un match sur l'autre.** Ils sont saisis à chaque fois,
+   alors que l'effectif change peu. Demande de relier les pistes entre matchs,
+   ce que rien ne permet aujourd'hui.
 2. **Identité visuelle**, quand le produit aura un nom.
 3. **Export vers un tableur**, pour les clubs qui tiennent déjà des statistiques.

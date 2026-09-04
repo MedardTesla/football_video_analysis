@@ -64,6 +64,9 @@ class Job:
     # que celle du match suivant. Sans cette désignation, aucune comparaison
     # de saison n'a de sens.
     our_team: int | None = None
+    # Numéro de piste -> nom donné par le club. Les numéros sont attribués par
+    # le traqueur et ne veulent rien dire pour un entraîneur.
+    player_names: dict[str, str] = field(default_factory=dict)
     state: JobState = JobState.QUEUED
     progress: float = 0.0
     error: str | None = None
@@ -101,6 +104,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     club_id TEXT NOT NULL DEFAULT '',
     contact TEXT NOT NULL DEFAULT '',
     our_team INTEGER,
+    player_names TEXT,
     state TEXT NOT NULL,
     progress REAL NOT NULL DEFAULT 0,
     attempts INTEGER NOT NULL DEFAULT 0,
@@ -143,6 +147,8 @@ class JobStore:
             db.execute("ALTER TABLE jobs ADD COLUMN club_id TEXT NOT NULL DEFAULT ''")
         if "our_team" not in existantes:
             db.execute("ALTER TABLE jobs ADD COLUMN our_team INTEGER")
+        if "player_names" not in existantes:
+            db.execute("ALTER TABLE jobs ADD COLUMN player_names TEXT")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=30)
@@ -346,6 +352,18 @@ class JobStore:
             1 for r in rows if datetime.fromisoformat(r["updated_at"]).timestamp() <= limite
         )
 
+    def set_player_names(self, job_id: str, names: dict[str, str]) -> None:
+        """Enregistre les noms saisis par le club, les vides étant effacés."""
+        propres = {
+            str(k): v.strip()[:60] for k, v in names.items() if v and v.strip()
+        }
+        with self._connect() as db:
+            db.execute(
+                "UPDATE jobs SET player_names = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(propres, ensure_ascii=False),
+                 datetime.now(timezone.utc).isoformat(), job_id),
+            )
+
     def set_our_team(self, job_id: str, team: int | None) -> None:
         """Désigne l'équipe du club dans ce match, ou l'efface."""
         if team is not None and team not in (0, 1):
@@ -368,4 +386,7 @@ class JobStore:
         data = dict(row)
         data["state"] = JobState(data["state"])
         data["stats"] = json.loads(data["stats"]) if data["stats"] else None
+        data["player_names"] = (
+            json.loads(data["player_names"]) if data.get("player_names") else {}
+        )
         return Job(**data)

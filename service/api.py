@@ -12,6 +12,8 @@ un client la demande.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse, HTMLResponse, JSONResponse, RedirectResponse,
@@ -170,6 +172,51 @@ def rapport(job_id: str, token: str) -> FileResponse:
     if job.state is not JobState.DONE or not job.report_path:
         raise HTTPException(status_code=409, detail="Analyse pas encore terminée.")
     return FileResponse(job.report_path, media_type="text/html")
+
+
+@app.get("/m/{job_id}/{token}/joueurs", response_class=HTMLResponse)
+def nommer_joueurs(job_id: str, token: str) -> str:
+    job = _authenticate(job_id, token)
+    if job.state is not JobState.DONE or not job.stats:
+        raise HTTPException(status_code=409, detail="Analyse pas encore terminée.")
+    return pages.naming_page(job, pages.nommables(job.stats))
+
+
+@app.post("/m/{job_id}/{token}/joueurs")
+async def enregistrer_noms(job_id: str, token: str, request: Request) -> RedirectResponse:
+    """Enregistre les noms puis régénère le rapport.
+
+    Le rapport est un fichier produit une fois par le worker : sans
+    régénération, les noms n'apparaîtraient que sur ce formulaire. La
+    régénération est peu coûteuse — elle ne relit que les statistiques, jamais
+    la vidéo.
+    """
+    from datetime import date
+
+    from football_analysis.report import ReportMeta, write as write_report
+
+    job = _authenticate(job_id, token)
+    if job.state is not JobState.DONE or not job.report_path:
+        raise HTTPException(status_code=409, detail="Analyse pas encore terminée.")
+
+    formulaire = await request.form()
+    noms = {
+        cle[len("nom_"):]: str(valeur)
+        for cle, valeur in formulaire.items()
+        if cle.startswith("nom_")
+    }
+    store.set_player_names(job.id, noms)
+
+    chemin = Path(job.report_path)
+    stats_path = chemin.with_name("analyse.json")
+    if stats_path.exists():
+        write_report(
+            stats_path, chemin,
+            ReportMeta(match_name=job.match_name, played_on=date.today()),
+            radar_png=chemin.with_name("analyse_radar.png"),
+            names=store.get(job.id).player_names,
+        )
+    return RedirectResponse(f"{job.public_url}/rapport", status_code=303)
 
 
 @app.get("/m/{job_id}/{token}/video")
