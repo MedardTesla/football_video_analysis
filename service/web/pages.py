@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import html
 
-from ..jobs import Job, JobState
+from ..jobs import Club, Job, JobState
 
 STYLE = """
 :root {
@@ -122,20 +122,38 @@ def _attente(en_attente: int) -> str:
     return f"{en_attente} matchs sont en attente avant celui-ci."
 
 
-def upload_form(erreur: str | None = None) -> str:
+def _champs_formulaire(club: Club | None) -> str:
+    """Champ « club » masqué et pré-rempli quand on vient de son espace.
+
+    Le jeton voyage en champ caché plutôt qu'en paramètre d'adresse : il
+    n'apparaît alors ni dans l'historique du navigateur ni dans les journaux
+    du serveur, alors que le formulaire est parfois rempli sur un poste
+    partagé au club.
+    """
+    if club is None:
+        return """  <label>Club
+   <input type="text" name="club" required maxlength="80" placeholder="US Valmont">
+  </label>"""
+    return (
+        f'  <input type="hidden" name="club_id" value="{html.escape(club.id)}">\n'
+        f'  <input type="hidden" name="club_token" value="{html.escape(club.token)}">\n'
+        f'  <input type="hidden" name="club" value="{html.escape(club.name)}">'
+    )
+
+
+def upload_form(erreur: str | None = None, club: Club | None = None) -> str:
     alerte = f'<p class="erreur">{html.escape(erreur)}</p>' if erreur else ""
+    titre = "Déposer un match" if club else "Déposer une vidéo"
     corps = f"""
  <header>
-  <span class="eyebrow">Analyse de match</span>
-  <h1>Déposer une vidéo</h1>
+  <span class="eyebrow">{html.escape(club.name) if club else "Analyse de match"}</span>
+  <h1>{titre}</h1>
  </header>
  <p class="lede">Vous recevez un lien à conserver. L'analyse dure environ une
  heure ; vous pouvez fermer cette page.</p>
  {alerte}
  <form method="post" action="/matches" enctype="multipart/form-data">
-  <label>Club
-   <input type="text" name="club" required maxlength="80" placeholder="US Valmont">
-  </label>
+{_champs_formulaire(club)}
   <label>Match
    <input type="text" name="match_name" required maxlength="120"
           placeholder="US Valmont – AS Beaupré, 30 août">
@@ -155,16 +173,80 @@ def upload_form(erreur: str | None = None) -> str:
  <p class="note">Filmez depuis un point haut et reculé : cela double la part du
  match réellement analysable, bien plus que n'importe quel réglage de notre côté.</p>
  <footer>La vidéo est supprimée de nos serveurs dès le rapport produit.</footer>"""
-    return _document("Déposer une vidéo", corps)
+    return _document(titre, corps)
 
 
-def upload_done(job: Job, en_attente: int) -> str:
+ETIQUETTES_COURTES = {
+    JobState.QUEUED: "En attente",
+    JobState.PROCESSING: "En cours",
+    JobState.DONE: "Prêt",
+    JobState.FAILED: "Échec",
+}
+
+
+def club_page(club: Club, matchs: list[Job], en_attente: int) -> str:
+    """Espace du club : tous ses matchs derrière un seul lien.
+
+    Sans cette page, un club qui analyse dix matchs conserve dix liens. La
+    valeur d'un tel produit tient pourtant dans la tendance d'une saison, pas
+    dans un match isolé.
+    """
+    if matchs:
+        lignes = []
+        for m in matchs:
+            libelle = ETIQUETTES_COURTES[m.state]
+            classe = LIBELLES[m.state][1]
+            date = m.created_at[:10]
+            if m.state is JobState.DONE:
+                lien = f'{html.escape(m.public_url)}/rapport'
+                action = f'<a href="{lien}">Voir le rapport</a>'
+            else:
+                action = f'<a href="{html.escape(m.public_url)}">Suivre</a>'
+            lignes.append(
+                f"<tr><td>{html.escape(m.match_name)}</td>"
+                f'<td class="date">{date}</td>'
+                f'<td><span class="pastille {classe}"></span>{libelle}</td>'
+                f'<td class="action">{action}</td></tr>'
+            )
+        table = (
+            '<div class="scroll"><table><thead><tr><th>Match</th><th>Déposé</th>'
+            "<th>État</th><th></th></tr></thead><tbody>"
+            + "".join(lignes)
+            + "</tbody></table></div>"
+        )
+    else:
+        table = "<p class='lede'>Aucun match analysé pour l'instant.</p>"
+
+    corps = f"""
+ <header>
+  <span class="eyebrow">Espace du club</span>
+  <h1>{html.escape(club.name)}</h1>
+ </header>
+ <div class="panel">{table}</div>
+ <div class="actions">
+  <a class="principal" href="{html.escape(club.public_url)}/deposer">Déposer un match</a>
+ </div>
+ <footer>Conservez l'adresse de cette page : elle donne accès à tous vos
+ rapports, et n'est envoyée nulle part ailleurs.</footer>"""
+    return _document(club.name, corps)
+
+
+def upload_done(job: Job, en_attente: int, club: Club | None = None) -> str:
     if job.contact:
         avis = (f"<p>Vous serez prévenu à <strong>{html.escape(job.contact)}</strong> "
                 "dès que le rapport sera prêt. Conservez tout de même ce lien.</p>")
     else:
         avis = ("<p><strong>Conservez ce lien.</strong> C'est le seul moyen de "
                 "retrouver votre rapport — il ne vous sera pas renvoyé.</p>")
+
+    espace = ""
+    if club is not None:
+        espace = f"""
+ <div class="panel">
+  <p><strong>L'espace de votre club</strong> réunit tous vos matchs derrière une
+  seule adresse. C'est celle à conserver sur la durée.</p>
+  <p class="lien">{html.escape(club.public_url)}</p>
+ </div>"""
     corps = f"""
  <header>
   <span class="eyebrow">Vidéo reçue</span>
@@ -174,6 +256,7 @@ def upload_done(job: Job, en_attente: int) -> str:
   {avis}
   <p class="lien">{html.escape(job.public_url)}</p>
  </div>
+ {espace}
  <p class="lede">{_attente(en_attente)}</p>
  <div class="actions">
   <a class="principal" href="{html.escape(job.public_url)}">Suivre l'analyse</a>

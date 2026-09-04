@@ -536,3 +536,129 @@ def test_an_older_database_gains_the_contact_column(tmp_path):
     assert store.get("a").contact == ""
     nouveau = store.create("Club", "Autre", "/tmp/v.mp4", contact="a@b.fr")
     assert store.get(nouveau.id).contact == "a@b.fr"
+
+
+# --- Espace du club ----------------------------------------------------------
+
+def test_a_first_upload_creates_a_club_space(client):
+    tc, api = client
+    reponse = _deposer(tc)
+    job = api.store.list_for_club("US Valmont")[0]
+    assert job.club_id
+    club = api.store.get_club(job.club_id)
+    assert club.name == "US Valmont"
+    assert club.public_url in reponse.text
+
+
+def test_two_clubs_with_the_same_name_stay_separate(client):
+    """Le cas qui interdit de rattacher les matchs au seul nom : deux
+    catégories d'un même village portent souvent le même nom."""
+    tc, api = client
+    _deposer(tc, "Match A")
+    _deposer(tc, "Match B")
+    clubs = {j.club_id for j in api.store.list_for_club("US Valmont")}
+    assert len(clubs) == 2
+    for club_id in clubs:
+        assert len(api.store.matches_of_club(club_id)) == 1
+
+
+def test_the_club_page_lists_its_matches(client):
+    tc, api = client
+    _deposer(tc, "Valmont – Beaupré")
+    club = api.store.get_club(api.store.list_for_club("US Valmont")[0].club_id)
+
+    page = tc.get(club.public_url)
+    assert page.status_code == 200
+    assert "Valmont – Beaupré" in page.text
+    assert "US Valmont" in page.text
+
+
+def test_the_club_page_needs_its_token(client):
+    tc, api = client
+    _deposer(tc)
+    club = api.store.get_club(api.store.list_for_club("US Valmont")[0].club_id)
+    assert tc.get(f"/c/{club.id}/faux-jeton").status_code == 404
+    assert tc.get("/c/inconnu/jeton").status_code == 404
+
+
+def test_uploading_from_a_club_space_joins_it(client):
+    tc, api = client
+    _deposer(tc, "Premier")
+    club = api.store.get_club(api.store.list_for_club("US Valmont")[0].club_id)
+
+    formulaire = tc.get(f"{club.public_url}/deposer")
+    assert formulaire.status_code == 200
+    assert club.token in formulaire.text          # jeton en champ caché
+
+    tc.post("/matches",
+            data={"match_name": "Second", "club_id": club.id, "club_token": club.token},
+            files={"video": ("m.mp4", b"x" * 500, "video/mp4")})
+
+    matchs = api.store.matches_of_club(club.id)
+    assert {m.match_name for m in matchs} == {"Premier", "Second"}
+
+
+def test_a_forged_club_token_is_refused_at_upload(client):
+    tc, api = client
+    _deposer(tc)
+    club = api.store.get_club(api.store.list_for_club("US Valmont")[0].club_id)
+
+    reponse = tc.post("/matches",
+        data={"match_name": "Intrus", "club_id": club.id, "club_token": "faux"},
+        files={"video": ("m.mp4", b"x" * 500, "video/mp4")})
+    assert reponse.status_code == 404
+    assert len(api.store.matches_of_club(club.id)) == 1
+
+
+def test_the_club_token_never_reaches_the_address_bar(client):
+    """Le formulaire est parfois rempli sur un poste partagé au club : le
+    jeton ne doit apparaître ni dans l'historique ni dans les journaux."""
+    tc, api = client
+    _deposer(tc)
+    club = api.store.get_club(api.store.list_for_club("US Valmont")[0].club_id)
+    page = tc.get(f"{club.public_url}/deposer").text
+    assert f'name="club_token" value="{club.token}"' in page
+    assert 'method="post"' in page.lower()
+
+
+def test_an_empty_club_space_says_so(client):
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    page = tc.get(club.public_url)
+    assert "Aucun match" in page.text
+
+
+def test_the_club_page_shows_each_match_state(client):
+    tc, api = client
+    _deposer(tc, "Terminé")
+    job = api.store.list_for_club("US Valmont")[0]
+    api.store.update(job.id, state=JobState.DONE, report_path="/tmp/r.html")
+
+    page = tc.get(api.store.get_club(job.club_id).public_url).text
+    assert "Prêt" in page
+    assert f"{job.public_url}/rapport" in page
+
+
+def test_an_older_database_gains_the_club_column(tmp_path):
+    import sqlite3
+
+    chemin = tmp_path / "ancienne.db"
+    db = sqlite3.connect(chemin)
+    db.executescript(
+        "CREATE TABLE jobs (id TEXT PRIMARY KEY, token TEXT NOT NULL,"
+        " club TEXT NOT NULL, match_name TEXT NOT NULL, video_path TEXT NOT NULL,"
+        " state TEXT NOT NULL, progress REAL NOT NULL DEFAULT 0, error TEXT,"
+        " stats TEXT, report_path TEXT, video_output_path TEXT,"
+        " created_at TEXT NOT NULL, updated_at TEXT NOT NULL);"
+    )
+    db.execute(
+        "INSERT INTO jobs VALUES ('a','t','Club','Match','/tmp/v.mp4','queued',"
+        "0,NULL,NULL,NULL,NULL,'2026-01-01T00:00:00+00:00','2026-01-01T00:00:00+00:00')"
+    )
+    db.commit(); db.close()
+
+    store = JobStore(chemin)
+    assert store.get("a").club_id == ""
+    club = store.create_club("Nouveau")
+    nouveau = store.create("Nouveau", "Match", "/tmp/v.mp4", club_id=club.id)
+    assert store.matches_of_club(club.id) == [store.get(nouveau.id)]

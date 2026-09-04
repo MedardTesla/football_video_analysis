@@ -107,7 +107,11 @@ def process(
         # La source ne sert plus, et c'est le poste de stockage dominant.
         Path(job.video_path).unlink(missing_ok=True)
         log.info("match %s analysé", job.id)
-        _prevenir(job, notifier, report_ready(job.match_name, job.public_url, BASE_URL))
+        espace = store.get_club(job.club_id) if job.club_id else None
+        _prevenir(job, notifier, report_ready(
+            job.match_name, job.public_url, BASE_URL,
+            espace.public_url if espace else "",
+        ))
 
     except Exception as erreur:                      # noqa: BLE001
         # Le message est lu par un club, pas par un développeur : la trace

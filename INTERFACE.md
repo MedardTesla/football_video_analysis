@@ -26,6 +26,8 @@ calcul : elle ne serait qu'une autre façon d'atteindre le même service.
 | Confirmation | après envoi | montre le lien privé, rappelle de le garder |
 | Suivi | `/m/{id}/{jeton}` | état, jauge de progression, mise à jour seule |
 | Rapport | `/m/{id}/{jeton}/rapport` | le livrable, chiffres et vue tactique |
+| Espace du club | `/c/{id}/{jeton}` | tous les matchs du club, un seul lien |
+| Dépôt rattaché | `/c/{id}/{jeton}/deposer` | le match rejoint l'espace |
 
 Plus la vidéo annotée en téléchargement, et `/sante` pour la supervision.
 
@@ -75,19 +77,17 @@ parole : l'interface doit donc empêcher un club de se tromper.
 
 Assumé pour l'instant, à traiter quand un client le demandera :
 
-- **Aucun historique.** Un club qui analyse dix matchs conserve dix liens. La
-  valeur d'un tel produit est pourtant dans la tendance sur une saison, pas
-  dans un match isolé. C'est le manque le plus sérieux.
 - **Aucune identité visuelle.** Ni logo, ni nom de produit, ni page d'accueil
   commerciale. Le service est fonctionnel, pas vendu.
 - **Aucune personnalisation par club.** Couleurs de maillot, noms des joueurs
   au lieu des numéros de piste, logo sur le rapport.
-- **Pas de comparaison entre matchs**, ni d'export vers un tableur.
+- **Pas de comparaison entre matchs**, ni d'export vers un tableur. L'espace du
+  club les liste, il ne les met pas en regard.
 
 ## Ordre proposé
 
-1. **Page « mes matchs »** par club, protégée par un jeton unique. Résout le
-   manque le plus sérieux sans imposer de comptes.
-2. **Noms des joueurs** en remplacement des numéros de piste. Un entraîneur ne
+1. **Noms des joueurs** en remplacement des numéros de piste. Un entraîneur ne
    reconnaît pas « joueur 17 ».
+2. **Comparaison entre matchs** dans l'espace du club : possession et contrôle
+   sur une saison. Les données sont déjà là, il manque la lecture.
 3. **Identité visuelle**, quand le produit aura un nom.

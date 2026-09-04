@@ -250,3 +250,16 @@ def test_a_failed_send_does_not_lose_the_report(contexte, tmp_path):
     fini = store.get(job.id)
     assert fini.state is JobState.DONE
     assert Path(fini.report_path).exists()
+
+
+def test_the_notification_points_to_the_club_space(contexte, tmp_path):
+    store, storage, job, _ = contexte
+    club = store.create_club("US Valmont")
+    nouveau = store.create("US Valmont", "Match", job.video_path,
+                           contact="a@club.fr", club_id=club.id)
+    espion = NotifierEspion()
+
+    worker.process(nouveau.id, store, storage, Config(),
+                   run=_pipeline_reussi(tmp_path), notifier=espion)
+
+    assert club.public_url in espion.envoyes[0].corps

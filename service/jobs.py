@@ -31,12 +31,32 @@ class JobState(str, Enum):
 
 
 @dataclass
+class Club:
+    """Un club et son espace privé.
+
+    Identifié par un jeton, jamais par son nom : deux clubs homonymes — ce qui
+    arrive souvent entre catégories d'un même village — verraient sinon les
+    matchs l'un de l'autre.
+    """
+
+    id: str
+    token: str
+    name: str
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    @property
+    def public_url(self) -> str:
+        return f"/c/{self.id}/{self.token}"
+
+
+@dataclass
 class Job:
     id: str
     token: str
     club: str
     match_name: str
     video_path: str
+    club_id: str = ""
     contact: str = ""
     state: JobState = JobState.QUEUED
     progress: float = 0.0
@@ -60,12 +80,19 @@ class Job:
 
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS clubs (
+    id TEXT PRIMARY KEY,
+    token TEXT NOT NULL,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
     token TEXT NOT NULL,
     club TEXT NOT NULL,
     match_name TEXT NOT NULL,
     video_path TEXT NOT NULL,
+    club_id TEXT NOT NULL DEFAULT '',
     contact TEXT NOT NULL DEFAULT '',
     state TEXT NOT NULL,
     progress REAL NOT NULL DEFAULT 0,
@@ -77,7 +104,13 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+"""
+
+# Créés après la migration : un index porte sur des colonnes qui peuvent
+# manquer à une base créée par une version antérieure.
+INDEX = """
 CREATE INDEX IF NOT EXISTS jobs_state ON jobs(state, created_at);
+CREATE INDEX IF NOT EXISTS jobs_club ON jobs(club_id, created_at);
 """
 
 
@@ -88,6 +121,7 @@ class JobStore:
         with self._connect() as db:
             db.executescript(SCHEMA)
             self._migrate(db)
+            db.executescript(INDEX)
 
     @staticmethod
     def _migrate(db: sqlite3.Connection) -> None:
@@ -98,6 +132,8 @@ class JobStore:
             db.execute("ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
         if "contact" not in existantes:
             db.execute("ALTER TABLE jobs ADD COLUMN contact TEXT NOT NULL DEFAULT ''")
+        if "club_id" not in existantes:
+            db.execute("ALTER TABLE jobs ADD COLUMN club_id TEXT NOT NULL DEFAULT ''")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=30)
@@ -107,8 +143,41 @@ class JobStore:
         db.execute("PRAGMA journal_mode=WAL")
         return db
 
+    # --- clubs ---------------------------------------------------------
+
+    def create_club(self, name: str) -> Club:
+        club = Club(id=secrets.token_hex(8), token=secrets.token_urlsafe(24), name=name)
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO clubs (id, token, name, created_at) VALUES (?,?,?,?)",
+                (club.id, club.token, club.name, club.created_at),
+            )
+        return club
+
+    def get_club(self, club_id: str) -> Club | None:
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM clubs WHERE id = ?", (club_id,)).fetchone()
+        return Club(**dict(row)) if row else None
+
+    def authenticate_club(self, club_id: str, token: str) -> Club | None:
+        club = self.get_club(club_id)
+        if club is None or not secrets.compare_digest(club.token, token):
+            return None
+        return club
+
+    def matches_of_club(self, club_id: str, limit: int = 200) -> list[Job]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT * FROM jobs WHERE club_id = ? ORDER BY created_at DESC LIMIT ?",
+                (club_id, limit),
+            ).fetchall()
+        return [self._to_job(r) for r in rows]
+
+    # --- matchs --------------------------------------------------------
+
     def create(
-        self, club: str, match_name: str, video_path: str, contact: str = ""
+        self, club: str, match_name: str, video_path: str, contact: str = "",
+        club_id: str = "",
     ) -> Job:
         job = Job(
             id=secrets.token_hex(8),
@@ -117,14 +186,16 @@ class JobStore:
             match_name=match_name,
             video_path=str(video_path),
             contact=contact,
+            club_id=club_id,
         )
         with self._connect() as db:
             db.execute(
-                "INSERT INTO jobs (id, token, club, match_name, video_path, contact,"
-                " state, progress, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO jobs (id, token, club, match_name, video_path, club_id,"
+                " contact, state, progress, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (job.id, job.token, job.club, job.match_name, job.video_path,
-                 job.contact, job.state.value, job.progress, job.created_at,
-                 job.updated_at),
+                 job.club_id, job.contact, job.state.value, job.progress,
+                 job.created_at, job.updated_at),
             )
         return job
 

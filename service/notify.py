@@ -99,15 +99,22 @@ def from_environment() -> Notifier:
     )
 
 
-def report_ready(match_name: str, lien: str, base_url: str = "") -> Message:
+def report_ready(
+    match_name: str, lien: str, base_url: str = "", espace: str = ""
+) -> Message:
+    espace_ligne = (
+        f"\nTous vos matchs : {base_url}{espace}\n"
+        "C'est cette adresse à conserver sur la durée.\n" if espace else ""
+    )
     return Message(
         destinataire="",
         sujet=f"Analyse terminée : {match_name}",
         corps=(
             f"L'analyse de {match_name} est terminée.\n\n"
-            f"Votre rapport : {base_url}{lien}\n\n"
-            "Ce lien est personnel : toute personne qui l'obtient accède au "
-            "rapport. Il reste valable trois mois.\n"
+            f"Votre rapport : {base_url}{lien}\n"
+            f"{espace_ligne}\n"
+            "Ces liens sont personnels : toute personne qui les obtient accède "
+            "aux rapports. Ils restent valables trois mois.\n"
         ),
     )
 

@@ -15,7 +15,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
-from .jobs import Job, JobState, JobStore
+from .jobs import Club, Job, JobState, JobStore
 from .notify import looks_like_email
 from .settings import DATA_ROOT, STALE_SECONDS
 from .storage import Storage, UploadRefuse
@@ -40,35 +40,81 @@ def accueil() -> str:
     return pages.upload_form()
 
 
+def _authenticate_club(club_id: str, token: str) -> Club:
+    club = store.authenticate_club(club_id, token)
+    if club is None:
+        raise HTTPException(status_code=404, detail="Espace introuvable.")
+    return club
+
+
+@app.get("/c/{club_id}/{token}", response_class=HTMLResponse)
+def espace_club(club_id: str, token: str) -> str:
+    club = _authenticate_club(club_id, token)
+    return pages.club_page(club, store.matches_of_club(club.id), store.pending_count())
+
+
+@app.get("/c/{club_id}/{token}/deposer", response_class=HTMLResponse)
+def deposer_depuis_espace(club_id: str, token: str) -> str:
+    """Formulaire pré-rattaché au club : le match rejoindra son espace."""
+    return pages.upload_form(club=_authenticate_club(club_id, token))
+
+
 @app.post("/matches", response_class=HTMLResponse)
 async def deposer(
     request: Request,
-    club: str = Form(...),
     match_name: str = Form(...),
+    club: str = Form(""),
+    club_id: str = Form(""),
+    club_token: str = Form(""),
     contact: str = Form(""),
     video: UploadFile = None,
 ) -> HTMLResponse:
+    # Un dépôt venant d'un espace de club porte son jeton ; sinon un nouvel
+    # espace est créé. Rattacher au seul nom serait dangereux : deux clubs
+    # homonymes, fréquents entre catégories d'un même village, se
+    # partageraient leurs rapports.
+    espace: Club | None = None
+    if club_id and club_token:
+        espace = store.authenticate_club(club_id, club_token)
+        if espace is None:
+            return HTMLResponse(
+                pages.upload_form(erreur="Espace de club introuvable."), 404
+            )
+        club = espace.name
+
+    if not club.strip():
+        return HTMLResponse(pages.upload_form(erreur="Nom du club manquant."), 400)
+
     if video is None or not video.filename:
-        return HTMLResponse(pages.upload_form(erreur="Aucune vidéo sélectionnée."), 400)
+        return HTMLResponse(
+            pages.upload_form(erreur="Aucune vidéo sélectionnée.", club=espace), 400
+        )
 
     # Une adresse invalide est refusée plutôt qu'ignorée : le club croirait
     # être prévenu et attendrait un message qui ne viendrait jamais.
     contact = contact.strip()
     if contact and not looks_like_email(contact):
         return HTMLResponse(
-            pages.upload_form(erreur=f"Adresse e-mail invalide : {contact}"), 400
+            pages.upload_form(erreur=f"Adresse e-mail invalide : {contact}", club=espace),
+            400,
         )
 
-    job = store.create(club.strip(), match_name.strip(), video_path="", contact=contact)
+    if espace is None:
+        espace = store.create_club(club.strip())
+
+    job = store.create(
+        espace.name, match_name.strip(), video_path="",
+        contact=contact, club_id=espace.id,
+    )
     try:
         chemin = storage.save_upload(job.id, video.filename, video.file)
     except UploadRefuse as refus:
         store.update(job.id, state=JobState.FAILED, error=str(refus))
-        return HTMLResponse(pages.upload_form(erreur=str(refus)), 400)
+        return HTMLResponse(pages.upload_form(erreur=str(refus), club=espace), 400)
 
     store.update(job.id, video_path=str(chemin))
     job.video_path = str(chemin)
-    return HTMLResponse(pages.upload_done(job, store.pending_count()), 201)
+    return HTMLResponse(pages.upload_done(job, store.pending_count(), espace), 201)
 
 
 @app.get("/m/{job_id}/{token}", response_class=HTMLResponse)

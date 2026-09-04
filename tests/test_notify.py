@@ -75,3 +75,17 @@ def test_an_incomplete_environment_falls_back_to_logging(monkeypatch):
     monkeypatch.setenv("FA_SMTP_HOST", "smtp.example.fr")
     monkeypatch.delenv("FA_SMTP_FROM", raising=False)
     assert isinstance(notify.from_environment(), LogNotifier)
+
+
+def test_the_ready_message_carries_the_club_space_too():
+    """Le lien de match n'est valable que pour un match ; c'est l'espace du
+    club qu'un entraîneur doit conserver sur la durée."""
+    m = report_ready("Match", "/m/abc/j", "https://ex.fr", espace="/c/xyz/k")
+    assert "https://ex.fr/m/abc/j" in m.corps
+    assert "https://ex.fr/c/xyz/k" in m.corps
+    assert "conserver sur la durée" in m.corps
+
+
+def test_a_match_without_a_club_space_omits_the_line():
+    m = report_ready("Match", "/m/abc/j", "https://ex.fr")
+    assert "Tous vos matchs" not in m.corps
