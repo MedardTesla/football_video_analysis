@@ -215,3 +215,44 @@ def test_the_working_root_is_defined_before_it_is_used(tous_les_codes):
             premier = src.find(usage)
             if premier != -1:
                 assert premier > definition, f"{nom} : {usage} avant la définition"
+
+
+# --- Récupération des poids -------------------------------------------------
+
+def test_each_notebook_names_the_weights_as_config_expects(tous_les_codes):
+    """« poids.pt » obligeait à deviner lequel des deux modèles on tenait.
+    Le fichier récupéré porte le nom sous lequel le pipeline le cherche."""
+    from football_analysis.config import DetectionConfig, PitchConfig
+
+    attendu = {
+        "points clés": PitchConfig().weights.name,
+        "détecteur": DetectionConfig().weights.name,
+    }
+    for nom, src in tous_les_codes.items():
+        assert f"NOM = '{attendu[nom]}'" in src, nom
+
+
+def test_kaggle_gets_a_direct_download_link(tous_les_codes):
+    """L'onglet Output d'une session Kaggle est vide tant qu'aucune version
+    n'est enregistrée, et enregistrer relance tout l'entraînement. Le lien
+    direct est la seule sortie qui ne coûte pas plusieurs heures."""
+    for nom, src in tous_les_codes.items():
+        assert "FileLink" in src, nom
+
+
+def test_the_retrieval_instructions_warn_against_rerunning_everything():
+    for fichier in (NOTEBOOK, DETECTION):
+        nb = json.loads(fichier.read_text(encoding="utf-8"))
+        markdown = "\n".join(
+            "".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "markdown"
+        )
+        assert "Quick Save" in markdown, fichier.name
+        assert "réexécute le notebook entier" in markdown, fichier.name
+
+
+def test_the_key_never_blocks_a_batch_run(tous_les_codes):
+    """Sans entrée clavier, getpass suspend indéfiniment un Save Version.
+    Un secret Kaggle ou une variable d'environnement doit passer devant."""
+    for nom, src in tous_les_codes.items():
+        assert "kaggle_secrets" in src, nom
+        assert "os.environ.get('ROBOFLOW_API_KEY')" in src, nom
