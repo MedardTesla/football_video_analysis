@@ -135,11 +135,20 @@ def _deposer(client, nom="Valmont – Beaupré"):
     )
 
 
-def test_the_upload_form_is_served(client):
+def test_the_home_page_presents_the_product(client):
     tc, _ = client
     page = tc.get("/")
     assert page.status_code == 200
-    assert "Déposer une vidéo" in page.text
+    assert "Ce que vous recevez" in page.text
+
+
+def test_the_home_page_carries_the_form_itself(client):
+    """Un clic de plus entre la promesse et le champ perd le club."""
+    tc, _ = client
+    page = tc.get("/").text
+    assert 'action="/matches"' in page
+    assert 'name="match_name"' in page
+    assert 'name="video"' in page
 
 
 def test_uploading_returns_a_private_link(client):
@@ -770,12 +779,12 @@ def test_the_trend_never_aggregates_individual_distances(client):
 
 # --- Nommage des joueurs -----------------------------------------------------
 
-def _match_avec_stats(api, nom="Match"):
+def _match_avec_stats(api, nom="Match", club_id=""):
     """Match terminé, avec rapport et statistiques sur disque."""
     import json as _json
     from pathlib import Path as _Path
 
-    job = api.store.create("US Valmont", nom, "/tmp/v.mp4")
+    job = api.store.create("US Valmont", nom, "/tmp/v.mp4", club_id=club_id)
     dossier = api.storage.job_dir(job.id)
     stats = {
         "coverage": 0.9, "possession": {"0": 0.55, "1": 0.45},
@@ -822,6 +831,32 @@ def test_saving_names_rewrites_the_report(client):
 
     from pathlib import Path
     assert "Kossi Adjovi" in Path(job.report_path).read_text(encoding="utf-8")
+
+
+def test_a_second_match_suggests_the_names_of_the_first(client):
+    """Un effectif change peu d'un match à l'autre ; le ressaisir en entier
+    est le premier motif d'abandon du nommage."""
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    premier = _match_avec_stats(api, "J1", club_id=club.id)
+    tc.post(f"{premier.public_url}/joueurs",
+            data={"nom_4": "Kossi Adjovi"}, follow_redirects=False)
+
+    second = _match_avec_stats(api, "J2", club_id=club.id)
+    page = tc.get(f"{second.public_url}/joueurs").text
+    assert '<option value="Kossi Adjovi">' in page
+    assert 'list="effectif"' in page
+
+
+def test_a_match_outside_a_club_space_suggests_nothing(client):
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    premier = _match_avec_stats(api, "J1", club_id=club.id)
+    tc.post(f"{premier.public_url}/joueurs",
+            data={"nom_4": "Kossi Adjovi"}, follow_redirects=False)
+
+    isole = _match_avec_stats(api, "Isolé")
+    assert "Kossi Adjovi" not in tc.get(f"{isole.public_url}/joueurs").text
 
 
 def test_names_need_the_match_token(client):
@@ -886,3 +921,22 @@ def test_an_old_orphan_is_still_removed(store, storage):
     os.utime(dossier, (vieux, vieux))
 
     assert storage.purge_orphans(store.all_ids()) == ["fantome"]
+
+
+def test_both_deposit_forms_stay_identical(client):
+    """Le formulaire est rendu à deux endroits : la page d'accueil et le
+    dépôt rattaché à un espace de club. Dupliqué, il divergerait sans qu'aucun
+    test ne s'en aperçoive — les deux pages rendraient un formulaire valide,
+    simplement différent."""
+    tc, api = client
+    club = api.store.create_club("US Valmont")
+    accueil = tc.get("/").text
+    rattache = tc.get(f"{club.public_url}/deposer").text
+
+    for champ in ("match_name", "played_on", "source_url", "video", "contact"):
+        assert f'name="{champ}"' in accueil, champ
+        assert f'name="{champ}"' in rattache, champ
+
+    # Le nom du club : saisi depuis l'accueil, déjà connu depuis l'espace.
+    assert 'name="club" required' in accueil
+    assert 'name="club_id"' in rattache

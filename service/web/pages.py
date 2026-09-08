@@ -10,9 +10,11 @@ pour que le dépôt et le résultat se lisent comme un seul produit.
 from __future__ import annotations
 
 import html
+from collections.abc import Sequence
 
 from ..jobs import Club, Job, JobState
 from ..season import Season
+from ..settings import PRODUIT
 
 STYLE = """
 :root {
@@ -153,6 +155,26 @@ section.panel h2 { font:600 .72rem/1 "IBM Plex Sans",sans-serif;
                    font-size:.75rem; color:var(--muted);
                    font-variant-numeric:tabular-nums; }
 
+/* --- page d'accueil ----------------------------------------------------
+   Seule page sans jeton dans l'adresse, donc seule page qu'un visiteur
+   atteint sans rien savoir du service. */
+.marque { font:600 clamp(2.6rem,9vw,3.6rem)/1 "Barlow Condensed","Arial Narrow",sans-serif;
+          margin:0; letter-spacing:.005em; }
+.promesse { font-size:1.05rem; }
+ol.etapes { margin:0; padding-left:1.2rem; display:flex; flex-direction:column;
+            gap:.7rem; }
+ol.etapes::marker, ol.etapes li::marker { color:var(--turf); font-weight:600; }
+ol.etapes b { display:block; }
+ul.recu { margin:0; padding-left:1.1rem; display:flex; flex-direction:column;
+          gap:.5rem; }
+ul.recu li::marker { color:var(--turf); }
+dl.franchise { margin:0; font-size:.92rem; }
+dl.franchise dt { font-weight:600; }
+dl.franchise dd { margin:.15rem 0 .85rem; color:var(--muted); }
+dl.franchise dd:last-of-type { margin-bottom:0; }
+h2.depot { font:600 clamp(1.5rem,4vw,1.9rem)/1.1 "Barlow Condensed","Arial Narrow",sans-serif;
+           margin:.5rem 0 0; padding-top:1.4rem; border-top:2px solid var(--turf); }
+
 /* --- téléphone ---------------------------------------------------------
    Sous 620 px, cinq colonnes imposent un défilement horizontal. Chaque
    ligne devient une fiche, l'intitulé de colonne étant repris devant la
@@ -189,14 +211,20 @@ LIBELLES = {
 }
 
 
-def _document(titre: str, corps: str, tete: str = "") -> str:
+def _document(titre: str, corps: str, tete: str = "",
+              indexable: bool = False) -> str:
+    """`indexable` n'est vrai que pour la page d'accueil.
+
+    Toutes les autres adresses portent un jeton d'accès. Indexées, elles
+    deviendraient publiques : un club qui colle son lien sur un forum
+    exposerait ses rapports à quiconque cherche le nom de son club. Le refus
+    est donc le défaut, et l'exception s'écrit à l'appel.
+    """
+    robots = ("index, follow" if indexable else "noindex, nofollow")
     return f"""<!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- Les adresses portent un jeton d'accès. Indexées, elles deviendraient
-     publiques : un club qui colle son lien sur un forum exposerait ses
-     rapports à quiconque cherche le nom de son club. -->
-<meta name="robots" content="noindex, nofollow">
+<meta name="robots" content="{robots}">
 <title>{html.escape(titre)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -320,17 +348,15 @@ def error_page(code: int, message: str) -> str:
     return _document(titre, corps)
 
 
-def upload_form(erreur: str | None = None, club: Club | None = None) -> str:
+def _bloc_depot(erreur: str | None = None, club: Club | None = None) -> str:
+    """Le formulaire seul, partagé par la page d'accueil et le dépôt rattaché.
+
+    Dupliquer ce balisage les ferait diverger : un champ ajouté d'un côté
+    manquerait de l'autre, et aucun test ne le verrait — les deux pages
+    rendraient un formulaire valide, simplement différent.
+    """
     alerte = f'<p class="erreur">{html.escape(erreur)}</p>' if erreur else ""
-    titre = "Déposer un match" if club else "Déposer une vidéo"
-    corps = f"""
- <header>
-  <span class="eyebrow">{html.escape(club.name) if club else "Analyse de match"}</span>
-  <h1>{titre}</h1>
- </header>
- <p class="lede">Vous recevez un lien à conserver. L'analyse dure environ une
- heure ; vous pouvez fermer cette page.</p>
- {alerte}
+    return f"""{alerte}
  <form method="post" action="/matches" enctype="multipart/form-data">
 {_champs_formulaire(club)}
   <label>Match
@@ -365,11 +391,110 @@ def upload_form(erreur: str | None = None, club: Club | None = None) -> str:
    lien peut lire le rapport.</span>
   </label>
   <button type="submit">Envoyer la vidéo</button>
- </form>
+ </form>"""
+
+
+def upload_form(erreur: str | None = None, club: Club | None = None) -> str:
+    titre = "Déposer un match" if club else "Déposer une vidéo"
+    corps = f"""
+ <header>
+  <span class="eyebrow">{html.escape(club.name) if club else "Analyse de match"}</span>
+  <h1>{titre}</h1>
+ </header>
+ <p class="lede">Vous recevez un lien à conserver. L'analyse dure environ une
+ heure ; vous pouvez fermer cette page.</p>
+ {_bloc_depot(erreur, club)}
  <p class="note">Filmez depuis un point haut et reculé : cela double la part du
  match réellement analysable, bien plus que n'importe quel réglage de notre côté.</p>
  <footer>La vidéo est supprimée de nos serveurs dès le rapport produit.</footer>"""
     return _document(titre, corps)
+
+
+def home_page(erreur: str | None = None) -> str:
+    """Page d'accueil : la seule qu'un visiteur atteint sans rien savoir.
+
+    Elle porte le formulaire en bas plutôt que derrière un lien. Un club de
+    village décide en une page ou pas du tout, et un clic de plus entre la
+    promesse et le champ suffit à le perdre.
+
+    L'argumentaire ne dit que du mesuré. Un rapport d'analyse automatique est
+    cru sur parole : promettre ici ce que le rapport ne tient pas se paierait
+    à la première lecture.
+    """
+    description = ("Déposez la vidéo de votre match, recevez possession, "
+                   "contrôle du terrain et distance parcourue par joueur. "
+                   "Sans compte ni logiciel.")
+    corps = f"""
+ <header>
+  <span class="eyebrow">Analyse vidéo de match</span>
+  <h1 class="marque">{html.escape(PRODUIT)}</h1>
+ </header>
+ <p class="promesse">Vous filmez le match, vous déposez la vidéo. Une heure
+ plus tard, vous savez ce que la rencontre a réellement produit : la
+ possession, le contrôle du terrain, et les kilomètres de chaque joueur.</p>
+ <div class="actions"><a class="principal" href="#deposer">Déposer un match</a></div>
+
+ <section class="panel">
+  <h2>Ce que vous recevez</h2>
+  <ul class="recu">
+   <li>Un <b>rapport</b> lisible sur téléphone et imprimable : possession,
+   contrôle du terrain, distance et vitesse de pointe joueur par joueur.</li>
+   <li>La <b>vidéo annotée</b>, chaque joueur suivi et rattaché à son équipe.</li>
+   <li>Une <b>vue du dessus</b> du placement des deux équipes.</li>
+   <li>Le <b>relevé en tableur</b>, pour les clubs qui tiennent leurs chiffres.</li>
+   <li>Un <b>espace de club</b> : tous vos matchs derrière un lien, et la
+   tendance de la saison match après match.</li>
+  </ul>
+ </section>
+
+ <section class="panel">
+  <h2>Comment ça marche</h2>
+  <ol class="etapes">
+   <li><b>Vous déposez.</b> Le lien de votre match s'il est déjà en ligne,
+   sinon le fichier. Ni compte à créer, ni logiciel à installer.</li>
+   <li><b>Nous analysons.</b> Environ une heure. Fermez la page : vous gardez
+   un lien, et un e-mail vous prévient si vous en laissez un.</li>
+   <li><b>Vous nommez vos joueurs.</b> Le rapport remplace alors les numéros
+   par les noms de votre effectif.</li>
+  </ol>
+ </section>
+
+ <p class="note"><b>Ce qui pèse le plus, c'est votre caméra.</b> Mesuré sur
+ deux matchs de la même équipe : selon le seul point de vue, la part du match
+ réellement analysable passe de 47 % à plus de 92 %. Filmez d'un point haut et
+ reculé, en un plan large, sans zoom brusque. Aucun réglage de notre côté ne
+ rattrape cela.</p>
+
+ <section class="panel">
+  <h2>Ce que nous ne promettons pas</h2>
+  <dl class="franchise">
+   <dt>Un match mesuré de bout en bout.</dt>
+   <dd>Chaque rapport affiche d'abord la part du match qu'il a réellement
+   mesurée. Les totaux sont des planchers, jamais extrapolés : une distance
+   affichée est toujours inférieure ou égale à la réalité.</dd>
+   <dt>Des distances au mètre près.</dt>
+   <dd>Ce sont des ordres de grandeur, et le rapport le dit. Nous préférons
+   l'écrire plutôt que d'afficher une décimale qui ferait sérieux.</dd>
+   <dt>De garder vos images.</dt>
+   <dd>La vidéo est supprimée de nos serveurs dès le rapport produit. Ce sont
+   les images de votre club.</dd>
+   <dt>Un compte et un mot de passe.</dt>
+   <dd>Votre lien est votre clé : conservez-le, il est le seul accès. Toute
+   personne à qui vous le donnez peut lire le rapport.</dd>
+  </dl>
+ </section>
+
+ <h2 class="depot" id="deposer">Déposer un match</h2>
+ <p class="lede">Vous recevez un lien à conserver. L'analyse dure environ une
+ heure ; vous pouvez fermer cette page.</p>
+ {_bloc_depot(erreur)}
+ <footer>Le service est gratuit pendant sa mise au point.
+ La vidéo est supprimée de nos serveurs dès le rapport produit.</footer>"""
+    return _document(
+        f"{PRODUIT} — analyse vidéo de match", corps,
+        tete=f'\n<meta name="description" content="{html.escape(description)}">',
+        indexable=True,
+    )
 
 
 def _selecteur_equipe(club: Club, job: Job) -> str:
@@ -541,8 +666,26 @@ def nommables(stats: dict, part_minimale: float = PART_MINIMALE) -> list[dict]:
     return sorted(retenus, key=lambda j: -j["seconds_seen"])
 
 
-def naming_page(job: Job, joueurs: list[dict]) -> str:
-    """Formulaire de nommage des joueurs d'un match."""
+def naming_page(job: Job, joueurs: list[dict], effectif: Sequence[str] = ()) -> str:
+    """Formulaire de nommage des joueurs d'un match.
+
+    `effectif` est la liste des noms déjà saisis par le club. Elle sert de
+    suggestions à la frappe, jamais de pré-remplissage : aucune piste n'est
+    reliée d'un match au suivant, et un nom placé d'office serait une
+    affirmation que rien ne soutient.
+    """
+    if effectif:
+        liste = ('<datalist id="effectif">'
+                 + "".join(f'<option value="{html.escape(n)}">' for n in effectif)
+                 + "</datalist>")
+        suggestions = ' list="effectif"'
+        rappel = ("<p class='lede'>Les noms déjà donnés par le club sont proposés "
+                  "dès les premières lettres. Ils ne sont pas placés d'avance : "
+                  "rien ne relie une piste d'un match à celle du suivant, et "
+                  "c'est vous qui reconnaissez le joueur.</p>")
+    else:
+        liste = suggestions = rappel = ""
+
     if not joueurs:
         lignes = ("<p class='lede'>Aucune piste assez suivie pour être nommée "
                   "sur ce match.</p>")
@@ -557,7 +700,7 @@ def naming_page(job: Job, joueurs: list[dict]) -> str:
    <td><span class="pastille" style="background:{couleur}"></span></td>
    <td class="date">{j["distance_m"] / 1000:.1f} km · {j["seconds_seen"] / 60:.0f} min</td>
    <td><input type="text" name="nom_{j["track_id"]}" value="{valeur}"
-              maxlength="60" placeholder="Nom du joueur"></td>
+              maxlength="60" placeholder="Nom du joueur"{suggestions}></td>
   </tr>""")
         lignes = ('<div class="scroll"><table><thead><tr><th>N°</th><th></th>'
                   "<th>Relevé</th><th>Nom</th></tr></thead><tbody>"
@@ -571,7 +714,9 @@ def naming_page(job: Job, joueurs: list[dict]) -> str:
  <p class="lede">Les numéros sont attribués automatiquement et ne
  correspondent pas aux maillots. Repérez chaque joueur dans la vidéo annotée,
  puis inscrivez son nom ici : il remplacera le numéro dans le rapport.</p>
+ {rappel}
  <form method="post" action="{html.escape(job.public_url)}/joueurs">
+  {liste}
   <div class="panel">{lignes}</div>
   <button type="submit">Enregistrer les noms</button>
  </form>

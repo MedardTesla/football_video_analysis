@@ -120,3 +120,94 @@ def test_an_older_database_gains_the_names_column(tmp_path):
     assert store.get("a").player_names == {}
     store.set_player_names("a", {"4": "Kossi"})
     assert store.get("a").player_names == {"4": "Kossi"}
+
+
+# --- effectif du club --------------------------------------------------------
+#
+# Les noms sont ressaisis à chaque match alors que l'effectif change peu.
+# Rien ne relie une piste d'un match à celle du suivant : l'effectif ne peut
+# donc que suggérer, jamais nommer d'office.
+
+def test_the_roster_offers_names_from_earlier_matches(store):
+    club = store.create_club("ASKO")
+    premier = store.create("ASKO", "J1", "/tmp/v.mp4", club_id=club.id)
+    store.set_player_names(premier.id, {"4": "Kossi Adjovi", "9": "Yao Mensah"})
+    assert store.club_roster(club.id) == ["Kossi Adjovi", "Yao Mensah"]
+
+
+def test_the_roster_never_crosses_clubs(store):
+    """L'effectif d'un club livré à un autre serait une fuite de données."""
+    askо = store.create_club("ASKO")
+    autre = store.create_club("Barracuda")
+    match = store.create("ASKO", "J1", "/tmp/v.mp4", club_id=askо.id)
+    store.set_player_names(match.id, {"4": "Kossi Adjovi"})
+    assert store.club_roster(autre.id) == []
+
+
+def test_a_match_deposited_alone_has_no_roster(store):
+    """Sans espace de club, aucun lien démontrable entre deux dépôts."""
+    match = store.create("ASKO", "J1", "/tmp/v.mp4")
+    store.set_player_names(match.id, {"4": "Kossi Adjovi"})
+    assert store.club_roster("") == []
+
+
+def test_the_roster_lists_each_name_once(store):
+    club = store.create_club("ASKO")
+    for numero, noms in enumerate(
+        ({"4": "Kossi Adjovi"}, {"7": "kossi adjovi"}, {"2": "Yao Mensah"}), 1
+    ):
+        match = store.create("ASKO", f"J{numero}", "/tmp/v.mp4", club_id=club.id)
+        store.set_player_names(match.id, noms)
+    effectif = store.club_roster(club.id)
+    assert len(effectif) == 2
+    assert {n.casefold() for n in effectif} == {"kossi adjovi", "yao mensah"}
+
+
+def test_the_most_recent_match_leads_the_roster(store):
+    """L'effectif du dernier match est celui qui ressemble au prochain."""
+    club = store.create_club("ASKO")
+    vieux = store.create("ASKO", "J1", "/tmp/v.mp4", club_id=club.id)
+    store.set_player_names(vieux.id, {"4": "Parti En Janvier"})
+    recent = store.create("ASKO", "J2", "/tmp/v.mp4", club_id=club.id)
+    store.set_player_names(recent.id, {"4": "Arrivé En Février"})
+    assert store.club_roster(club.id)[0] == "Arrivé En Février"
+
+
+def test_the_roster_is_capped(store):
+    club = store.create_club("ASKO")
+    match = store.create("ASKO", "J1", "/tmp/v.mp4", club_id=club.id)
+    store.set_player_names(match.id, {str(i): f"Joueur {i}" for i in range(100)})
+    assert len(store.club_roster(club.id, limit=25)) == 25
+
+
+# --- suggestions dans le formulaire ------------------------------------------
+
+@pytest.fixture
+def job_nommable(store):
+    club = store.create_club("ASKO")
+    job = store.create("ASKO", "J2", "/tmp/v.mp4", club_id=club.id)
+    return store.get(job.id)
+
+
+def test_the_naming_page_suggests_the_roster(job_nommable):
+    page = pages.naming_page(job_nommable, pages.nommables(STATS), ["Kossi Adjovi"])
+    assert 'list="effectif"' in page
+    assert '<option value="Kossi Adjovi">' in page
+
+
+def test_a_suggestion_is_never_prefilled(job_nommable):
+    """Placer un nom d'office affirmerait un lien entre pistes qui n'existe pas."""
+    page = pages.naming_page(job_nommable, pages.nommables(STATS), ["Kossi Adjovi"])
+    assert page.count("Kossi Adjovi") == 1        # la suggestion, rien de plus
+    assert 'placeholder="Nom du joueur"' in page
+
+
+def test_a_club_without_a_roster_gets_no_empty_list(job_nommable):
+    page = pages.naming_page(job_nommable, pages.nommables(STATS))
+    assert "datalist" not in page
+    assert 'list="effectif"' not in page
+
+
+def test_roster_names_are_escaped(job_nommable):
+    page = pages.naming_page(job_nommable, pages.nommables(STATS), ['"><script>x'])
+    assert "<script>" not in page

@@ -160,5 +160,7 @@ la mesure qui fixe la fréquence, c'est le suivi — il lui faut du recouvrement
 entre images consécutives pour conserver les identités. Le plancher pratique
 reste à déterminer une fois les modèles disponibles.
 
-Le pipeline échantillonne à 10 fps par défaut (`ProcessingConfig.sample_fps`),
-soit deux fois plus de marge que le seuil où la mesure souffrirait.
+Le pipeline échantillonne à 12 fps par défaut (`ProcessingConfig.sample_fps`).
+Ce n'est pas la mesure qui fixe ce chiffre : elle tiendrait à 2 fps. C'est le
+suivi — mesuré sur extrait réel, descendre sous 5 fps fait passer les identités
+de 14 à 20 pour les mêmes joueurs.

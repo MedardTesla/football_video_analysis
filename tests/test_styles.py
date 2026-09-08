@@ -45,6 +45,7 @@ def _match_avec_stats(**kw):
 
 
 PAGES = {
+    "accueil": lambda: pages.home_page(),
     "dépôt": lambda: pages.upload_form(),
     "dépôt rattaché": lambda: pages.upload_form(club=CLUB),
     "dépôt en erreur": lambda: pages.upload_form(erreur="Format non pris en charge."),

@@ -74,18 +74,27 @@ def test_the_error_page_suggests_what_to_do(client):
     assert "se coupent souvent" in tc.get("/m/inconnu/jeton").text
 
 
-def test_every_page_refuses_indexing(client):
-    """Les adresses portent un jeton : indexées, elles deviendraient
-    publiques."""
-    tc, _ = client
-    assert "noindex" in tc.get("/").text
+def test_the_home_page_is_the_only_indexable_one(client):
+    """La page d'accueil doit se trouver ; toutes les autres adressent un
+    jeton et deviendraient publiques une fois indexées."""
+    tc, api = client
+    assert "noindex" not in tc.get("/").text
+
+    job = _match_termine(api)
+    club = api.store.create_club("US Valmont")
+    for adresse in (job.public_url,
+                    f"{job.public_url}/joueurs",
+                    club.public_url,
+                    f"{club.public_url}/deposer"):
+        assert "noindex" in tc.get(adresse).text, adresse
 
 
-def test_robots_forbids_the_whole_site(client):
+def test_robots_forbids_everything_but_the_home_page(client):
     tc, _ = client
     reponse = tc.get("/robots.txt")
     assert reponse.status_code == 200
     assert "Disallow: /" in reponse.text
+    assert "Allow: /$" in reponse.text      # la racine exacte, rien en dessous
 
 
 # --- suppression -------------------------------------------------------------

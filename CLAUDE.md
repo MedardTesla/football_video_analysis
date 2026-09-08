@@ -241,6 +241,12 @@ Décisions structurantes :
   un filtre qui masque le segment, à l'import de `api.py` — plus tard, les
   premières requêtes passeraient. Le filtre traite aussi `record.args` :
   uvicorn journalise l'adresse en argument de formatage, pas dans le message.
+- **L'effectif du club suggère, ne pré-remplit jamais.** `JobStore.club_roster`
+  rend les noms déjà saisis dans le même espace de club ; la page de nommage
+  les propose en `datalist`. Les placer d'office affirmerait qu'une piste d'un
+  match est celle du suivant — rien ne l'établit, et le club signerait un
+  rapport attribuant à un joueur la course d'un autre. L'effectif ne franchit
+  pas la frontière d'un club, et un match déposé hors espace n'en a aucun.
 - **Les longueurs sont coupées côté serveur.** Le `maxlength` d'un formulaire
   n'engage que les navigateurs.
 - **L'espace disque est protégé sur trois fronts** : réserve de 5 Go vérifiée

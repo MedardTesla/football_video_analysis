@@ -22,7 +22,8 @@ calcul : elle ne serait qu'une autre façon d'atteindre le même service.
 
 | Écran | Adresse | Rôle |
 |---|---|---|
-| Dépôt | `/` | club, match, date, vidéo ou lien, e-mail |
+| Accueil | `/` | présentation du service, puis le dépôt en bas de page |
+| Dépôt | `/` (bas de page) | club, match, date, vidéo ou lien, e-mail |
 | Confirmation | après envoi | montre le lien privé, rappelle de le garder |
 | Suivi | `/m/{id}/{jeton}` | état, jauge de progression, mise à jour seule |
 | Rapport | `/m/{id}/{jeton}/rapport` | le livrable, chiffres et vue tactique |
@@ -111,6 +112,23 @@ d'en retirer, et l'entraîneur ne saurait pas lequel désigner.
 Le numéro reste affiché à côté du nom : c'est lui qui figure dans la vidéo
 annotée, et le club doit pouvoir faire le lien.
 
+**L'effectif du club est proposé à la frappe.** Les noms déjà saisis sur les
+matchs précédents du même espace de club reviennent en suggestions dès les
+premières lettres. Ressaisir vingt noms à chaque match est le premier motif
+d'abandon du nommage, alors qu'un effectif change de deux ou trois joueurs
+par saison.
+
+Ils ne sont **jamais placés d'office**. Rien ne relie une piste d'un match à
+celle du suivant : le numéro 4 d'aujourd'hui n'est pas celui de la semaine
+dernière. Pré-remplir affirmerait un lien que rien ne soutient, et le club
+signerait sans le savoir un rapport attribuant à un joueur la course d'un
+autre. La suggestion supprime la frappe, pas la reconnaissance.
+
+L'effectif ne franchit pas la frontière d'un espace de club, et un match
+déposé seul n'en a aucun : deux dépôts séparés n'ont pas de lien démontrable,
+et les rapprocher sur la seule ressemblance du nom de club livrerait
+l'effectif d'un club à un autre.
+
 ## Ce que l'interface dit, et pourquoi
 
 L'enjeu n'est pas décoratif. Un rapport d'analyse automatique est cru sur
@@ -137,21 +155,53 @@ parole : l'interface doit donc empêcher un club de se tromper.
 - **Une page en attente n'affiche pas de jauge à 0 %**, qui laisserait croire à
   un blocage alors que rien n'a commencé.
 
+## La page d'accueil
+
+`/` présentait directement le formulaire. Un visiteur qui arrivait sans rien
+savoir tombait sur un champ « Nom du club » et repartait.
+
+La page présente maintenant le service, et **porte le formulaire en bas d'elle-
+même** plutôt que derrière un lien : un club de village décide en une page ou
+pas du tout, et un clic entre la promesse et le champ suffit à le perdre. Le
+formulaire n'est écrit qu'une fois (`_bloc_depot`) et sert aussi au dépôt
+rattaché à un espace de club — dupliqué, il aurait divergé sans que rien ne le
+signale.
+
+Trois choix de fond :
+
+- **L'argumentaire ne dit que du mesuré.** Le 47 % → 92 % selon la captation
+  vient d'`ANALYSE_TERRAIN.md`. Un rapport d'analyse automatique est cru sur
+  parole : promettre ici ce que le rapport ne tient pas se paierait à la
+  première lecture.
+- **Une section « ce que nous ne promettons pas ».** Couverture partielle,
+  distances données en ordre de grandeur, lien unique sans compte. Un club qui
+  découvre seul une limite doute de tout le reste ; annoncée d'avance, elle
+  devient une preuve de sérieux.
+- **C'est la seule page indexable du service.** Toutes les autres portent un
+  jeton d'accès et gardent leur `noindex` ; `robots.txt` n'autorise que la
+  racine exacte. `_document` refuse l'indexation par défaut, l'accueil est
+  l'exception écrite à l'appel — l'inverse aurait fini par exposer une page à
+  jeton.
+
+Le nom du produit vit dans `settings.PRODUIT`, en un seul endroit et
+surchargeable par variable d'environnement. Il est **provisoire**.
+
 ## Ce qui n'existe pas encore
 
 Assumé pour l'instant, à traiter quand un client le demandera :
 
-- **Aucune identité visuelle.** Ni logo, ni nom de produit, ni page d'accueil
-  commerciale. Le service est fonctionnel, pas vendu.
-- **Aucune personnalisation par club.** Couleurs de maillot, noms des joueurs
-  au lieu des numéros de piste, logo sur le rapport.
+- **Pas d'identité visuelle arrêtée.** Le nom est provisoire et il n'y a pas
+  de logo. La page d'accueil existe, la marque non.
+- **Aucune personnalisation par club.** Couleurs de maillot, logo sur le
+  rapport.
 - **Pas de facturation** : le service est gratuit et ouvert à quiconque a
   l'adresse.
 
 ## Ordre proposé
 
-1. **Report des noms d'un match sur l'autre.** Ils sont saisis à chaque fois,
-   alors que l'effectif change peu. Demande de relier les pistes entre matchs,
-   ce que rien ne permet aujourd'hui.
+1. ~~**Report des noms d'un match sur l'autre.**~~ Fait, sous la seule forme
+   honnête : l'effectif du club est suggéré à la frappe. Le report complet
+   demanderait de relier les pistes entre matchs, ce que rien ne permet —
+   ni le traqueur, ni l'apparence, les maillots étant identiques.
 2. **Identité visuelle**, quand le produit aura un nom.
 3. **Facturation**, quand le modèle économique sera arrêté.

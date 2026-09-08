@@ -84,8 +84,16 @@ def _sante_corps() -> dict:
 
 @app.get("/robots.txt", response_class=PlainTextResponse)
 def robots() -> str:
-    """Aucune page ne doit être indexée : toutes portent un jeton d'accès."""
-    return "User-agent: *\nDisallow: /\n"
+    """Seule la page d'accueil est indexable.
+
+    Toutes les autres adresses portent un jeton d'accès : indexées, elles
+    deviendraient publiques. L'interdiction reste donc globale, et l'accueil
+    en est extrait nommément — `/$` ne vaut que pour la racine exacte.
+
+    Ce fichier ne fait qu'écarter les robots polis. Ce qui protège vraiment
+    est le `noindex` porté par chaque page à jeton, et le jeton lui-même.
+    """
+    return "User-agent: *\nAllow: /$\nDisallow: /\n"
 store = JobStore(DATA_ROOT / "jobs.db")
 storage = Storage(DATA_ROOT / "videos")
 
@@ -138,7 +146,12 @@ def _authenticate(job_id: str, token: str) -> Job:
 
 @app.get("/", response_class=HTMLResponse)
 def accueil() -> str:
-    return pages.upload_form()
+    """Présentation du service, formulaire de dépôt en bas de la même page.
+
+    Un club de village décide en une page ou pas du tout : un clic de plus
+    entre la promesse et le champ suffit à le perdre.
+    """
+    return pages.home_page()
 
 
 def _authenticate_club(club_id: str, token: str) -> Club:
@@ -325,7 +338,9 @@ def nommer_joueurs(job_id: str, token: str) -> str:
     job = _authenticate(job_id, token)
     if job.state is not JobState.DONE or not job.stats:
         raise HTTPException(status_code=409, detail="Analyse pas encore terminée.")
-    return pages.naming_page(job, pages.nommables(job.stats))
+    return pages.naming_page(
+        job, pages.nommables(job.stats), store.club_roster(job.club_id)
+    )
 
 
 @app.post("/m/{job_id}/{token}/joueurs")

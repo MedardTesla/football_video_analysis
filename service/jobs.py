@@ -393,6 +393,40 @@ class JobStore:
                  datetime.now(timezone.utc).isoformat(), job_id),
             )
 
+    def club_roster(self, club_id: str, limit: int = 60) -> list[str]:
+        """Noms déjà saisis par ce club, du match le plus récent au plus ancien.
+
+        Rien ne relie une piste d'un match à celle du suivant. L'effectif ne
+        peut donc pas nommer les joueurs à la place de l'entraîneur, seulement
+        lui éviter de retaper vingt noms à chaque match.
+
+        Sans espace de club, pas d'effectif : deux matchs déposés séparément
+        n'ont aucun lien démontrable, et rapprocher des noms sur la seule
+        ressemblance du nom de club livrerait l'effectif d'un club à un autre.
+        """
+        if not club_id:
+            return []
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT player_names FROM jobs WHERE club_id = ?"
+                " AND player_names IS NOT NULL"
+                " ORDER BY created_at DESC LIMIT 200",
+                (club_id,),
+            ).fetchall()
+
+        effectif: list[str] = []
+        vus: set[str] = set()
+        for row in rows:
+            for nom in json.loads(row["player_names"]).values():
+                clef = nom.casefold()
+                if clef in vus:
+                    continue
+                vus.add(clef)
+                effectif.append(nom)
+                if len(effectif) >= limit:
+                    return effectif
+        return effectif
+
     def set_our_team(self, job_id: str, team: int | None) -> None:
         """Désigne l'équipe du club dans ce match, ou l'efface."""
         if team is not None and team not in (0, 1):

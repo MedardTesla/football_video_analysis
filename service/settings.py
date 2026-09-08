@@ -46,6 +46,12 @@ FILE_MAX_PAR_CLUB = 3
 FILE_MAX = 50
 
 
+# Nom du produit. Provisoire, et en un seul endroit : il figure sur la page
+# d'accueil, dans le titre des pages et dans les messages envoyés au club.
+# Le changer ne doit demander qu'une ligne, ou une variable d'environnement.
+PRODUIT = os.environ.get("FA_PRODUCT_NAME", "Onze")
+
+
 # Jeton d'accès à la page d'exploitation. Vide, la page est inaccessible —
 # c'est le défaut : mieux vaut pas d'administration qu'une administration
 # ouverte à tous.
