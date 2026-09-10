@@ -6,15 +6,31 @@ dispersées dans le code.
 """
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
 import numpy as np
 
 CM_PER_M = 100.0
-# Au-delà, c'est une erreur de suivi (identités permutées), pas un sprint :
-# le record du monde est à ~12 m/s.
-MAX_PLAUSIBLE_SPEED_MS = 12.0
+# Au-delà, c'est une erreur de suivi (identités permutées), pas un sprint. Un
+# footballeur d'élite culmine vers 10 m/s (36 km/h) ; le record du monde du
+# 100 m, tenu sur dix mètres, atteint 12 m/s. Retenir 12 laissait donc passer
+# des valeurs qu'aucun joueur n'atteint.
+MAX_PLAUSIBLE_SPEED_MS = 10.0
+
+# Durée sur laquelle la vitesse de pointe est mesurée. Une pointe déduite de
+# deux images consécutives ne mesure pas une course mais le bruit : à 12,5 fps
+# une image dure 0,08 s, et une erreur de position de 96 cm — ordinaire pour
+# une homographie — suffit à produire 12 m/s. Le maximum de milliers d'écarts
+# bruités vient alors se coller juste sous le plafond, et toutes les pointes du
+# rapport se ressemblent. Mesuré sur un extrait réel avant ce correctif :
+# 22 joueurs sur 28 au-dessus de 40 km/h.
+#
+# Une demi-seconde impose de couvrir réellement du terrain. La mesure porte sur
+# le déplacement net entre les deux bouts de la fenêtre : une course en courbe
+# est donc sous-estimée, ce qui est le bon compromis pour une pointe — elle ne
+# peut jamais être surestimée par un tremblement isolé.
+SPEED_WINDOW_S = 0.5
 
 
 @dataclass
@@ -38,6 +54,13 @@ class MatchStats:
     control_frames: int = 0
     control_sum: dict[int, float] = field(default_factory=lambda: defaultdict(float))
     _last_xy: dict[int, np.ndarray] = field(default_factory=dict, repr=False)
+    _positions: dict[int, deque] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        # Nombre de positions couvrant SPEED_WINDOW_S : n positions décrivent
+        # n-1 intervalles, d'où le +1. Deux au minimum, sans quoi aucune
+        # vitesse n'est calculable.
+        self._fenetre = max(2, int(round(self.fps * SPEED_WINDOW_S)) + 1)
 
     def update_player(self, track_id: int, xy: np.ndarray, team: int | None) -> None:
         """`xy` : position terrain en cm.
@@ -59,17 +82,33 @@ class MatchStats:
 
         previous = self._last_xy.get(track_id)
         self._last_xy[track_id] = xy
+        positions = self._positions.setdefault(track_id, deque(maxlen=self._fenetre))
+        positions.append(xy)
         if previous is None:
             return
 
         step_m = float(np.linalg.norm(xy - previous)) / CM_PER_M
-        speed = step_m * self.fps
-        if speed > MAX_PLAUSIBLE_SPEED_MS:
-            # Saut d'identité : on ignore ce pas plutôt que de gonfler
-            # la distance totale du joueur.
+        if step_m * self.fps > MAX_PLAUSIBLE_SPEED_MS:
+            # Saut d'identité : on ignore ce pas plutôt que de gonfler la
+            # distance totale du joueur. La fenêtre est vidée par la même
+            # occasion, la trajectoire n'étant plus continue.
+            positions.clear()
+            positions.append(xy)
             return
         stats.distance_m += step_m
-        stats.top_speed_ms = max(stats.top_speed_ms, speed)
+        stats.top_speed_ms = max(stats.top_speed_ms, self._vitesse_fenetre(positions))
+
+    def _vitesse_fenetre(self, positions: deque) -> float:
+        """Vitesse soutenue sur la fenêtre, ou 0 tant qu'elle est incomplète.
+
+        Rendre une valeur sur une fenêtre partielle rouvrirait la porte au
+        bruit : c'est exactement la mesure sur deux images que l'on remplace.
+        """
+        if len(positions) < self._fenetre:
+            return 0.0
+        ecart_m = float(np.linalg.norm(positions[-1] - positions[0])) / CM_PER_M
+        duree_s = (len(positions) - 1) / self.fps
+        return ecart_m / duree_s if duree_s else 0.0
 
     def merge_identities(self, mapping: dict[int, int]) -> None:
         """Fusionne les pistes recollées en une seule identité.
@@ -109,6 +148,10 @@ class MatchStats:
         """
         self.unmeasured_frames += 1
         self._last_xy.clear()
+        # Même raison pour les fenêtres de vitesse : à la reprise, les deux
+        # bouts encadreraient l'intervalle non observé et fabriqueraient une
+        # pointe à partir d'un trajet que personne n'a vu.
+        self._positions.clear()
 
     @property
     def coverage(self) -> float:

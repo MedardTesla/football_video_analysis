@@ -2,7 +2,9 @@ import numpy as np
 import pytest
 
 from football_analysis.analytics.ball import BallTrajectory
-from football_analysis.analytics.stats import MatchStats, nearest_player_team
+from football_analysis.analytics.stats import (
+    CM_PER_M, MAX_PLAUSIBLE_SPEED_MS, MatchStats, nearest_player_team,
+)
 from football_analysis.analytics.voronoi import control_share
 
 
@@ -48,7 +50,8 @@ def test_distance_accumulates_in_metres():
     stats.update_player(1, np.array([40.0, 0.0]), team=0)    # 0,4 m
     stats.update_player(1, np.array([80.0, 0.0]), team=0)    # 0,4 m
     assert stats.players[1].distance_m == pytest.approx(0.8)
-    assert stats.players[1].top_speed_ms == pytest.approx(10.0)
+    # La vitesse de pointe demande une fenêtre complète : voir les tests
+    # dédiés plus bas.
 
 
 def test_identity_switch_is_not_counted_as_distance():
@@ -117,11 +120,10 @@ def test_merging_identities_sums_the_distances():
 
 def test_merging_keeps_the_peak_speed_not_the_average():
     stats = MatchStats(fps=12.0)
-    stats.update_player(1, np.array([0.0, 0.0]), team=0)
-    stats.update_player(1, np.array([20.0, 0.0]), team=0)
-    stats.update_player(7, np.array([0.0, 0.0]), team=0)
-    stats.update_player(7, np.array([70.0, 0.0]), team=0)
+    _course(stats, 1, vitesse_ms=2.0, fps=12.0)
+    _course(stats, 7, vitesse_ms=7.0, fps=12.0)
     rapide = stats.players[7].top_speed_ms
+    assert rapide > stats.players[1].top_speed_ms
 
     stats.merge_identities({7: 1})
     assert stats.players[1].top_speed_ms == pytest.approx(rapide)
@@ -154,3 +156,55 @@ def test_merging_nothing_leaves_the_players_untouched():
     stats.update_player(2, np.array([0.0, 0.0]), team=1)
     stats.merge_identities({})
     assert set(stats.players) == {1, 2}
+
+
+def _course(stats, track_id, vitesse_ms, fps, secondes=1.0, depart=0.0):
+    """Fait courir un joueur en ligne droite, à vitesse constante."""
+    pas_cm = vitesse_ms * CM_PER_M / fps
+    for i in range(int(round(fps * secondes)) + 1):
+        stats.update_player(track_id, np.array([depart + i * pas_cm, 0.0]), team=0)
+
+
+def test_la_pointe_mesure_une_course_soutenue():
+    """Une course régulière rend bien sa vitesse."""
+    stats = MatchStats(fps=12.5)
+    _course(stats, 1, vitesse_ms=8.0, fps=12.5)
+    assert stats.players[1].top_speed_ms == pytest.approx(8.0, rel=1e-6)
+
+
+def test_un_tremblement_isole_ne_fabrique_pas_une_pointe():
+    """Le défaut corrigé : une seule image aberrante donnait un sprint.
+
+    Un joueur presque immobile dont la position saute de 90 cm sur une image
+    — bruit ordinaire d'homographie — affichait 11 m/s, soit 40 km/h. Mesuré
+    sur un extrait réel, 22 joueurs sur 28 dépassaient ainsi 40 km/h.
+    """
+    stats = MatchStats(fps=12.5)
+    for i in range(30):
+        # Immobile, à 2 cm près, sauf une image décalée de 90 cm.
+        x = 90.0 if i == 15 else (i % 2) * 2.0
+        stats.update_player(1, np.array([x, 0.0]), team=0)
+
+    pointe = stats.players[1].top_speed_ms
+    assert pointe < 2.0, f"{pointe * 3.6:.1f} km/h pour un joueur immobile"
+
+
+def test_la_pointe_ne_depasse_jamais_le_plausible():
+    """Garde-fou : aucune valeur au-dessus du plafond ne sort du calcul."""
+    stats = MatchStats(fps=12.5)
+    _course(stats, 1, vitesse_ms=9.5, fps=12.5, secondes=3.0)
+    assert stats.players[1].top_speed_ms <= MAX_PLAUSIBLE_SPEED_MS
+
+
+def test_un_intervalle_non_mesure_ne_fabrique_pas_une_pointe():
+    """Les deux bouts de la fenêtre ne doivent jamais encadrer un trou.
+
+    Sinon la reprise compte le trajet non observé comme une course, ce que
+    `mark_unmeasured` évite déjà pour la distance.
+    """
+    stats = MatchStats(fps=12.5)
+    _course(stats, 1, vitesse_ms=3.0, fps=12.5)
+    stats.mark_unmeasured()
+    # Reprise 40 m plus loin : le joueur a bougé pendant le trou.
+    _course(stats, 1, vitesse_ms=3.0, fps=12.5, depart=4000.0)
+    assert stats.players[1].top_speed_ms == pytest.approx(3.0, rel=1e-6)
