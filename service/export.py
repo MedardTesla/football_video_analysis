@@ -24,12 +24,16 @@ def players_csv(stats: dict, names: dict[str, str] | None = None) -> str:
     )
     for joueur in stats.get("players") or []:
         equipe = joueur.get("team")
+        # Une pointe non mesurée laisse la case vide plutôt qu'un zéro : un
+        # tableur additionne les zéros et fausserait la moyenne du club.
+        pointe = joueur.get("top_speed_ms")
+        pointe_txt = f"{pointe * 3.6:.1f}".replace(".", ",") if pointe is not None else ""
         ecrivain.writerow([
             joueur["track_id"],
             names.get(str(joueur["track_id"]), ""),
             {0: "A", 1: "B"}.get(equipe, ""),
             f"{joueur['distance_m'] / 1000:.2f}".replace(".", ","),
-            f"{joueur['top_speed_ms'] * 3.6:.1f}".replace(".", ","),
+            pointe_txt,
             f"{joueur['seconds_seen'] / 60:.0f}",
         ])
     # BOM : sans lui Excel lit le fichier en latin-1 et casse les accents.

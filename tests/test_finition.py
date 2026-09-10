@@ -48,6 +48,25 @@ def test_speeds_are_exported_in_kilometres_per_hour():
     assert "30,0" in csv              # 8,33 m/s
 
 
+def test_an_unmeasured_peak_leaves_the_cell_empty():
+    """Une pointe inconnue ne doit pas sortir en zéro.
+
+    La piste a été trop fragmentée pour qu'une demi-seconde continue soit
+    observée. Écrire 0 ferait additionner ce zéro par le tableur du club et
+    baisserait sa moyenne d'équipe ; la case vide est ignorée.
+
+    Ce défaut a fait planter `/releve.csv` en production sur le premier match
+    réel, la multiplication par 3,6 s'appliquant à `None`.
+    """
+    stats = {"players": [
+        {"track_id": 20, "team": 0, "distance_m": 16.6, "top_speed_ms": None,
+         "seconds_seen": 14.3},
+    ]}
+    ligne = players_csv(stats).strip().splitlines()[1]
+    assert ligne.startswith("20;")
+    assert ligne.split(";")[4] == "", ligne
+
+
 def test_an_unassigned_team_is_left_blank():
     ligne = [l for l in players_csv(STATS).splitlines() if l.startswith("12;")][0]
     assert ligne.split(";")[2] == ""
