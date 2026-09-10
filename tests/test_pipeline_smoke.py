@@ -11,6 +11,7 @@ import pytest
 import supervision as sv
 
 from football_analysis import pipeline
+from football_analysis.analytics.stats import MAX_PLAUSIBLE_SPEED_MS
 from football_analysis.config import BALL_ID, PLAYER_ID, Config
 from football_analysis.pitch.geometry import PITCH
 from football_analysis.video import io as video_io
@@ -143,9 +144,15 @@ def test_distances_are_physically_plausible(video, tmp_path):
     result = pipeline.run(video, tmp_path / "out.mp4", Config())
     seconds = N_FRAMES / 25.0
     for player in result.stats["players"]:
-        # Personne ne dépasse la vitesse d'un sprinter de haut niveau.
-        assert player["distance_m"] <= 12.0 * seconds
-        assert player["top_speed_ms"] <= 12.0
+        # Personne ne dépasse la vitesse d'un sprinter de haut niveau. La borne
+        # vient de la constante du module, jamais d'un nombre recopié : la
+        # baisser sans mettre ce test à jour laisserait passer ce qu'elle
+        # interdit désormais.
+        assert player["distance_m"] <= MAX_PLAUSIBLE_SPEED_MS * seconds
+        pointe = player["top_speed_ms"]
+        # `None` est légitime : la piste n'a jamais été vue une demi-seconde
+        # d'affilée. C'est une absence de mesure, pas une pointe nulle.
+        assert pointe is None or pointe <= MAX_PLAUSIBLE_SPEED_MS
 
 
 def test_players_stay_inside_pitch_bounds(video, tmp_path):

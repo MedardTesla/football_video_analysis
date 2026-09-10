@@ -74,7 +74,15 @@ def _players_block(players: list[dict], names: dict[str, str] | None = None) -> 
         colour = TEAM_HEX[team % 2] if team is not None else "#a9b0a9"
         label = TEAM_LABELS[team % 2] if team is not None else "Non attribué"
         km = player["distance_m"] / 1000
-        kmh = player["top_speed_ms"] * 3.6
+        # Une pointe inconnue — piste trop fragmentée pour qu'une demi-seconde
+        # continue ait été observée — s'affiche en tiret. Écrire « 0,0 km/h »
+        # affirmerait que le joueur n'a pas couru.
+        pointe = player.get("top_speed_ms")
+        pointe_html = (
+            f'{pointe * 3.6:.1f}<abbr>km/h</abbr>' if pointe is not None
+            else '<span class="inconnu" title="Pointe non mesurée : '
+                 'piste trop fragmentée">—</span>'
+        )
         nom = names.get(str(player["track_id"]))
         identite = (
             f'<span class="nom">{html.escape(nom)}</span>'
@@ -90,7 +98,7 @@ def _players_block(players: list[dict], names: dict[str, str] | None = None) -> 
             f'<td class="figure" data-champ="Distance">{km:.1f}<abbr>km</abbr>'
             f'<i class="track"><b style="width:{player["distance_m"] / furthest * 100:.0f}%;'
             f'background:{colour}"></b></i></td>'
-            f'<td class="figure" data-champ="Pointe">{kmh:.1f}<abbr>km/h</abbr></td>'
+            f'<td class="figure" data-champ="Pointe">{pointe_html}</td>'
             f'<td class="figure minutes" data-champ="Temps">'
             f'{player["seconds_seen"] / 60:.0f}<abbr>min</abbr></td>'
             "</tr>"

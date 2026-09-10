@@ -33,12 +33,24 @@ MAX_PLAUSIBLE_SPEED_MS = 10.0
 SPEED_WINDOW_S = 0.5
 
 
+def _max_connu(a: float | None, b: float | None) -> float | None:
+    """Maximum de deux valeurs dont l'une peut être inconnue."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return max(a, b)
+
+
 @dataclass
 class PlayerStats:
     track_id: int
     team: int | None = None
     distance_m: float = 0.0
-    top_speed_ms: float = 0.0
+    # `None` tant qu'aucune fenêtre complète n'a été observée : une pointe
+    # inconnue n'est pas une pointe nulle, et le rapport doit pouvoir les
+    # distinguer. Une piste trop fragmentée n'en produit jamais.
+    top_speed_ms: float | None = None
     frames_seen: int = 0
 
 
@@ -96,19 +108,21 @@ class MatchStats:
             positions.append(xy)
             return
         stats.distance_m += step_m
-        stats.top_speed_ms = max(stats.top_speed_ms, self._vitesse_fenetre(positions))
+        vitesse = self._vitesse_fenetre(positions)
+        if vitesse is not None:
+            stats.top_speed_ms = _max_connu(stats.top_speed_ms, vitesse)
 
-    def _vitesse_fenetre(self, positions: deque) -> float:
-        """Vitesse soutenue sur la fenêtre, ou 0 tant qu'elle est incomplète.
+    def _vitesse_fenetre(self, positions: deque) -> float | None:
+        """Vitesse soutenue sur la fenêtre, ou `None` si elle est incomplète.
 
         Rendre une valeur sur une fenêtre partielle rouvrirait la porte au
         bruit : c'est exactement la mesure sur deux images que l'on remplace.
         """
         if len(positions) < self._fenetre:
-            return 0.0
+            return None
         ecart_m = float(np.linalg.norm(positions[-1] - positions[0])) / CM_PER_M
         duree_s = (len(positions) - 1) / self.fps
-        return ecart_m / duree_s if duree_s else 0.0
+        return ecart_m / duree_s if duree_s else None
 
     def merge_identities(self, mapping: dict[int, int]) -> None:
         """Fusionne les pistes recollées en une seule identité.
@@ -129,7 +143,7 @@ class MatchStats:
                 )
                 continue
             garde.distance_m += stats.distance_m
-            garde.top_speed_ms = max(garde.top_speed_ms, stats.top_speed_ms)
+            garde.top_speed_ms = _max_connu(garde.top_speed_ms, stats.top_speed_ms)
             garde.frames_seen += stats.frames_seen
             if garde.team is None:
                 garde.team = stats.team
@@ -204,7 +218,9 @@ class MatchStats:
                     "track_id": p.track_id,
                     "team": p.team,
                     "distance_m": round(p.distance_m, 1),
-                    "top_speed_ms": round(p.top_speed_ms, 2),
+                    "top_speed_ms": (
+                        round(p.top_speed_ms, 2) if p.top_speed_ms is not None else None
+                    ),
                     "seconds_seen": round(p.frames_seen / self.fps, 1),
                 }
                 for p in sorted(self.players.values(), key=lambda s: -s.distance_m)
