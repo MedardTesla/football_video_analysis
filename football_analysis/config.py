@@ -63,6 +63,18 @@ class PitchConfig:
     """Détection des points clés du terrain (YOLOv8-pose, 32 keypoints)."""
 
     weights: Path = MODELS_DIR / "pitch_keypoints.pt"
+    # Échelle d'inférence. Le modèle est entraîné à 640 avec `scale=0.3` : sa
+    # tolérance couvre un plan resserré, pas un plan d'ensemble où le terrain
+    # n'occupe qu'une bande de l'image et où les lignes tombent à un ou deux
+    # pixels une fois réduites. Mesuré sur un extrait 1080p : à 640, un plan
+    # large rend 0 point sur 32 quand un plan serré en rend 13 ; à 1280, le
+    # large remonte à 15 et le serré tombe à 5. Aucune valeur unique ne
+    # convient aux deux, d'où le second essai ci-dessous.
+    imgsz: int = 640
+    # Échelle du second essai, tenté seulement si le premier ne donne pas
+    # `min_keypoints` points. Ne coûte donc que sur les frames qui échouent,
+    # c'est-à-dire les plans larges. `None` désactive le repli.
+    imgsz_retry: int | None = 1280
     # Confiance minimale d'un point clé pour servir à l'homographie.
     confidence: float = 0.5
     # Confiance minimale de la boîte englobant le terrain, volontairement

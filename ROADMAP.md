@@ -4,18 +4,26 @@
 
 | # | Étape | État |
 |---|-------|------|
-| 1 | Détection YOLOv8 | Fait — `detection/detector.py`, **poids à fournir** |
+| 1 | Détection YOLOv8 | Fait — `detection/detector.py`, `models/player_detection.pt` entraîné (mAP50 0,899 ; mAP50-95 0,595) |
 | 2 | Suivi BoT-SORT (+CMC) | Fait — `tracking/tracker.py`, testé sur doublures |
-| 3 | Équipes SigLIP + UMAP + K-Means | Structure prête — `teams/classifier.py`, non testé |
-| 4 | Points clés terrain (YOLOv8-pose, 32 kp) | Géométrie + script d'entraînement prêts, **modèle à entraîner** |
+| 3 | Équipes SigLIP + UMAP + K-Means | Fait — exécuté sur images réelles (507 vignettes, voir `ANALYSE_TERRAIN.md`) |
+| 4 | Points clés terrain (YOLOv8-pose, 32 kp) | Fait — `models/pitch_keypoints.pt` entraîné (mAP50-95 pose 0,925) |
 | 5 | Homographie bidirectionnelle | Fait — `pitch/view.py` (+ lissage fenêtre glissante) |
 | 6 | Voronoï / trajectoire ballon | Fait — `analytics/` |
 | 7 | Optimisation vitesse | Non commencé — non bloquant en traitement asynchrone |
 | 9 | Péremption d'homographie + couverture | Fait — `pitch/view.py`, `analytics/stats.py` |
 | 8 | Pipeline + CLI + statistiques JSON | Fait — `pipeline.py`, `cli.py`, `analytics/stats.py` |
 
-Aucun modèle entraîné n'est présent dans le dépôt. Rien n'est exécutable de bout en
-bout tant que `models/` n'est pas rempli.
+Les deux modèles sont désormais entraînés et vérifiés (ordre des classes, ordre des
+32 points clés, échelles d'entraînement). Ils ne sont pas versionnés : voir
+`data/README.md` pour les régénérer ou les récupérer.
+
+**Limite d'échelle du modèle de terrain, mesurée le 10/09/2026.** Entraîné à
+`imgsz=640` avec `scale=0.3`, il ne rend aucun repère sur un plan d'ensemble —
+0 point sur 32, là où un plan resserré du même match en donne 13. Contourné à
+l'exécution par un second essai à 1280 (`PitchConfig.imgsz_retry`), qui a porté
+la couverture de 73 % à 100 % sur l'échantillon mesuré. Le correctif de fond
+reste un réentraînement avec une augmentation d'échelle plus large.
 
 ## Bloquants pour la commercialisation
 
@@ -59,13 +67,11 @@ clubs filmant eux-mêmes, c'est simple, mais le contrat doit le dire.
 - ~~**Phase 0 — valider le besoin**~~ : fait sur deux matchs, voir
   `ANALYSE_TERRAIN.md`. Résultat déterminant : la disponibilité de l'homographie
   passe de 47 % à plus de 92 % selon la seule captation, à code identique.
-  **Écrire un cahier des charges de captation avant tout autre travail** — c'est
-  le levier le plus rentable du projet.
+  Le cahier des charges de captation qui en découle est écrit : `CAPTATION.md`.
 - **Phase 1 — pipeline bout en bout** sur une vidéo, sortie = vidéo annotée + radar.
-- **Phase 2 — entraîner le modèle de keypoints terrain** : notebook prêt à lancer,
-  `training/train_keypoints_colab.ipynb`. Dataset vérifié (CC BY 4.0, ordre des
-  points conforme), garde-fous en place, test d'acceptation en centimètres.
-  Ne peut pas tourner en local : pas de GPU.
+- ~~**Phase 2 — entraîner le modèle de keypoints terrain**~~ : fait, entraîné sur
+  Kaggle. Reste à réentraîner avec `scale=0.5` pour couvrir l'amplitude de zoom
+  d'une vraie caméra (voir la limite d'échelle ci-dessus).
 - ~~**Phase 3 — rapport livrable**~~ : fait (`report.py`), imprimable et lisible
   hors ligne. Démo : https://claude.ai/code/artifact/13840721-26c5-4d07-a58f-1d28977428ed
 - **Phase 4 — industrialisation** : file d'attente et stockage faits (`service/`).

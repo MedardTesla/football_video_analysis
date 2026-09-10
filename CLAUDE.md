@@ -10,11 +10,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 .venv/bin/python -m pytest tests/test_analytics.py::test_ball_rejects_impossible_jump
 ```
 
-Un venv existe déjà en `.venv/` avec numpy, opencv, supervision, trackers et pytest —
-soit de quoi faire tourner les tests. Les dépendances lourdes (`torch`,
-`transformers`, `ultralytics`, `umap-learn`) ne sont **pas** installées : les tests
-les évitent par des doublures, mais le pipeline réel en a besoin
-(`pip install -r requirements.txt`).
+Le venv de `.venv/` est désormais complet : numpy, opencv, supervision, trackers,
+pytest, mais aussi `torch`, `transformers`, `ultralytics` et `umap-learn`. Le
+pipeline réel y tourne donc, **sur CPU uniquement** — compter ~4 s par image
+traitée, soit ~40 min pour 30 s de vidéo. Les tests restent exécutables sans les
+modèles : ils passent par des doublures.
+
+`imageio_ffmpeg` fournit un binaire ffmpeg statique dans le venv, ce que
+`video/io.py` détecte : l'encodage H.264 fonctionne sans ffmpeg système.
 
 ### Runtime directories are required but not in git
 
@@ -155,6 +158,15 @@ Décisions structurantes, non évidentes à la lecture d'un seul fichier :
   qualité.** Elle varie de 0,05 à 0,89 sur des images où les points restent bons.
   `instance_confidence` est donc à 0,02 et le filtrage se fait sur les points.
   Le seuil par défaut d'Ultralytics divisait par deux le taux d'images exploitables.
+- **Le modèle de terrain est interrogé à deux échelles.** Entraîné à `imgsz=640`
+  avec `scale=0.3`, sa tolérance ne couvre pas l'amplitude de zoom d'une vraie
+  caméra : sur un extrait 1080p, un plan d'ensemble rendait 0 point sur 32 quand
+  un plan resserré du même match en donnait 13, et à 1280 le rapport s'inverse
+  (15 contre 5). Aucune valeur unique ne convient, d'où `PitchConfig.imgsz_retry` :
+  un second essai tenté **seulement** si le premier n'atteint pas `min_keypoints`,
+  en gardant le meilleur des deux. Mesuré : couverture de 73 % à 100 % pour +11,5 %
+  de calcul. C'est un contournement — le correctif de fond est un réentraînement
+  avec une augmentation d'échelle plus large.
 - **Le pipeline dégrade proprement.** Une frame sans keypoints exploitables réutilise
   la dernière homographie valide ; sans homographie du tout, la frame est annotée
   mais n'alimente ni le radar ni les statistiques spatiales. C'est le cas normal en
@@ -262,5 +274,10 @@ bloquants juridiques à trancher avant tout entraînement destiné à un produit
 commercial : Ultralytics est en AGPL-3.0 (clause réseau) et le dataset DFL Bundesliga
 est sous conditions de compétition.
 
-Aucun modèle entraîné n'est présent dans le dépôt ; `data/README.md` dit quoi placer
-où. Rien ne tourne de bout en bout tant que `models/` est vide.
+Les deux modèles sont entraînés et vérifiés, mais **non versionnés** ;
+`data/README.md` dit quoi placer où. Rien ne tourne de bout en bout tant que
+`models/` est vide.
+
+`CAPTATION.md` est le cahier des charges remis aux clubs : c'est la captation, et
+non le code, qui détermine la qualité d'analyse (47 % contre 92 % d'images
+exploitables selon le seul emplacement de la caméra).
