@@ -1,0 +1,18 @@
+[project]
+name = "football-analysis"
+version = "0.1.0"
+description = "Analyse vidéo de match de football pour clubs amateurs"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["football_analysis", "service"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Les avertissements de dépréciation des dépendances noient les nôtres.
+filterwarnings = ["ignore::DeprecationWarning"]

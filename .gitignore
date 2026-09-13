@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Modèles et données lourdes (jamais dans git — voir data/README.md)
+models/
+*.pt
+*.onnx
+*.engine
+input_video/
+output_video/
+stubs/
+*.pkl
+runs/
+
+# Jeu de démonstration préparé localement. Le jobs.db porte les jetons
+# d'accès du match : dans ce service le jeton tient lieu de mot de passe,
+# le publier rendrait le rapport lisible par quiconque. Régénérable par
+# scripts/preparer_demo.py.
+data/demo/
+
+# Datasets téléchargés
+training/football-players-detection-1/
+
+# Environnement
+.env
+.ipynb_checkpoints/

@@ -1,0 +1,373 @@
+# Phase 0 — Analyse de vidéos réelles
+
+Deux matchs, deux dispositifs de captation, **la même équipe** (ASKO joue dans
+les deux). L'écart entre les deux mesure donc la captation, pas le football.
+
+Source : ASKO vs AC Barracuda, D1 Lonato J23 (YouTube, `hwKSqtpk_a4`).
+Méthode : 5 images échantillonnées sur les 2 h du match (7', 25', 45', 70', 90'),
+passées dans un YOLOv8x générique COCO — aucun modèle spécialisé, donc les
+chiffres ci-dessous sont un **plancher**, pas un plafond.
+
+## Caractéristiques de la source
+
+| | |
+|---|---|
+| Résolution | 1280×720, 30 fps |
+| Durée | 7151 s (~2 h) |
+| Caméra | Unique, en bord de touche, à hauteur d'homme. Panoramique et zoom. |
+| Maillots | ASKO jaune/noir, Barracuda bordeaux. Arbitres en rouge. |
+
+## Résultats mesurés
+
+| Image | Personnes | Sur le terrain | Écartées | Hauteur médiane |
+|---|---|---|---|---|
+| 07' | 19 | 11 | 8 | 96 px |
+| 25' | 18 | 12 | 6 | 137 px |
+| 45' | 15 | 9 | 6 | 113 px |
+| 70' | 19 | 11 | 8 | 114 px |
+| 90' | 23 | 18 | 5 | 101 px |
+
+Ballon détecté sur **1 image sur 5**, à 13×12 px.
+
+## Ce qui fonctionne
+
+**La détection des joueurs.** Un modèle générique, non entraîné sur du football,
+trouve déjà tous les joueurs visibles, y compris à 30 px de haut. Un modèle
+spécialisé fera nettement mieux.
+
+**La classification d'équipes.** Jaune vif contre bordeaux, avec des boîtes de
+100 px de haut en médiane : largement assez de pixels pour SigLIP. C'est le cas
+favorable, pas le cas limite.
+
+**Le suivi.** La caméra bouge en permanence — d'où l'importance de la
+compensation de mouvement caméra déjà activée dans BoT-SORT.
+
+## Ce qui pose problème
+
+**Un tiers des personnes détectées ne sont pas des joueurs.** Entraîneurs
+debout, remplaçants sur le banc, spectateurs dans les gradins. Traité par
+`pitch/mask.py` : masque de pelouse par couleur, indépendant de l'homographie.
+Limite résiduelle assumée — un remplaçant assis dans l'herbe reste compté.
+
+**Le ballon.** 1 détection sur 5 images avec un modèle générique. À 720p il ne
+fait qu'une douzaine de pixels. La possession en dépend directement.
+Pistes : `imgsz` supérieur à la résolution native pour suréchantillonner, ou
+inférence par tuiles sur la zone de jeu.
+
+**L'homographie sera intermittente.** À 45' presque aucune ligne n'est visible ;
+à 90' on voit surface de but, ligne de touche et rond central. Le pipeline
+réutilise déjà la dernière homographie valide, mais sur cette source une part
+des frames n'aura aucune projection exploitable.
+
+**Le 720p invalide une hypothèse d'origine.** L'étirement 1920×1080 → 1280×1280
+supposait du 1080p. Ici la source est déjà en 1280 de large : il n'y a plus de
+suréchantillonnage, et le ballon reste à sa taille native.
+
+## Mesure : combien de frames permettent une homographie ?
+
+36 images échantillonnées régulièrement sur les 2 h, jugées visuellement sur un
+critère unique : y voit-on au moins 4 repères de terrain identifiables
+(intersections de lignes, coins de surface, arcs de cercle, cadre de but) ?
+
+| | |
+|---|---|
+| Frames exploitables | **17/36 = 47 %** (erreur-type 8 %, soit ~31-64 %) |
+| 1re période | 7/18 = 39 % |
+| 2e période | 10/18 = 56 % |
+| Plus longue série sans repère | 4 échantillons consécutifs, soit **~12 minutes** |
+
+### Pourquoi le jugement visuel plutôt qu'un détecteur
+
+Une mesure automatique par transformée de Hough a été tentée d'abord, puis
+abandonnée. Selon le réglage des seuils, le compte de lignes passait de 0 à 23
+sur la même image, sans réglage intermédiaire séparant les vraies lignes des
+poteaux de but, des ombres et des maillots clairs — sur une pelouse en plein
+soleil, une ligne n'est que légèrement plus contrastée que l'herbe. Calibrer ce
+détecteur aurait demandé autant de travail que le modèle de points clés qu'il
+devait justement éviter. Les primitives sont conservées dans `pitch/lines.py`,
+sans verdict et avec un avertissement explicite.
+
+### Ce que ce chiffre implique
+
+Les ~47 % ne sont pas le problème principal : le pipeline réutilise déjà la
+dernière homographie valide. **La série de 12 minutes, si.** Sur un tel
+intervalle la caméra a panoramiqué et zoomé plusieurs fois ; l'homographie
+conservée n'a plus aucun rapport avec l'image, et les positions projetées
+dérivent sans que rien ne le signale.
+
+Conséquence à implémenter : périmer l'homographie au bout de quelques secondes
+sans repère, et marquer ces intervalles comme non mesurés plutôt que de
+produire des distances fausses. Un rapport qui annonce « 23 minutes non
+analysables » reste vendable ; un rapport qui invente 3 km de course, non.
+
+### Autre constat
+
+Une des 36 images n'est pas du football : à 97', le flux diffuse une boîte de
+dialogue système (« REPAIR IMAGE DB FILE »). La chaîne de traitement doit
+tolérer des frames sans terrain du tout — le masque de pelouse les rejette
+déjà, mais rien ne le signale en aval.
+
+## Conclusion
+
+L'angle de caméra n'est pas rédhibitoire, contrairement au risque anticipé. La
+détection et la classification d'équipes fonctionnent bien sur cette source.
+
+Mais avec 47 % de frames exploitables et des trous pouvant atteindre 12
+minutes, les statistiques **individuelles** — distance parcourue, vitesse par
+joueur — ne sont pas fiables sur ce type de captation. Les statistiques **par
+équipe** et les séquences annotées le sont.
+
+Ce que cela veut dire commercialement : vendre « la distance parcourue par
+chaque joueur » exposerait à des chiffres faux. Vendre l'analyse d'équipe et la
+vidéo annotée, avec les périodes non mesurées explicitement signalées, tient.
+
+Deux façons d'améliorer le chiffre, par ordre de coût :
+1. **Repositionner la caméra** chez les clubs pilotes — plus haut, plus reculée.
+   Gratuit, et c'est le levier le plus puissant.
+2. Entraîner le modèle de points clés, qui reconnaît aussi des repères
+   sémantiques qu'un détecteur de lignes ignore (point de penalty, arcs).
+
+
+---
+
+# Second match : DJOLIBA x ASKO (Ligue des Champions CAF)
+
+Source : YouTube `0d472EWLOf0`, 1920×1080 à 50 fps, 97 min. Caméra en tribune
+haute, plans larges, stade quasi vide, piste d'athlétisme autour du terrain.
+Même protocole : 36 images échantillonnées, même critère de jugement.
+
+## Comparaison
+
+| | ASKO x Barracuda | Djoliba x ASKO |
+|---|---|---|
+| Résolution | 1280×720 / 30 fps | **1920×1080 / 50 fps** |
+| Caméra | Bord de touche, hauteur d'homme | **Tribune haute** |
+| Frames exploitables | **47 %** (±8 %) | **≥ 92 %** (36/36, 0 échec) |
+| Plus longue série sans repère | ~12 min | aucune observée |
+| Personnes hors terrain écartées | ~33 % | 15 % |
+| Ballon détecté (YOLO générique) | 1/5 images | **7/10 images** |
+| Taille du ballon | 13×12 px | 12 à 19 px |
+| Hauteur médiane d'un joueur | 96 à 137 px | 84 à 135 px |
+
+Le taux de 92 % est une borne basse : avec zéro échec sur 36 tirages, la règle
+de trois plafonne le taux d'échec à 3/36 ≈ 8 %.
+
+## Ce que cette comparaison démontre
+
+**La captation est le levier dominant, et de loin.** Même équipe, même
+championnat, même code d'analyse sans une ligne modifiée : la disponibilité de
+l'homographie passe de 47 % à plus de 92 % uniquement en changeant la position
+de la caméra et la résolution.
+
+Aucun modèle, aucun réentraînement, aucune optimisation ne rattrapera cet
+écart. Un cahier des charges de captation vaut plus que des mois d'ingénierie :
+
+- caméra en hauteur, au-dessus du niveau du terrain ;
+- plan large, montrant au moins un tiers du terrain ;
+- 1080p minimum — à 720p le ballon disparaît ;
+- caméra reculée, sans banc ni abri dans le champ.
+
+## Validation du masque adaptatif
+
+La teinte du gazon mesurée couvre **H = 41 à 63** sur les deux matchs, soit 22
+degrés d'amplitude. Aucune borne fixe ne couvre les deux stades : le choix
+d'estimer la teinte dominante sur chaque image, pris sur le premier match, est
+directement validé par le second. Le masque a fonctionné sans réglage sur une
+pelouse à bandes de tonte, un stade vide et une piste d'athlétisme.
+
+
+---
+
+# Première exécution réelle du classifieur d'équipes
+
+507 vignettes de joueurs extraites du match Djoliba x ASKO (40 instants sur 8
+minutes), passées dans SigLIP + UMAP + K-Means. Premier passage du composant
+sur de vraies images.
+
+## Deux bugs, trouvés en exécutant
+
+1. `AutoProcessor` charge le tokenizer de SigLIP, qui exige SentencePiece et
+   échoue à l'import. On n'utilise que le volet image : `AutoImageProcessor`
+   suffit.
+2. `get_image_features` renvoie un objet de sortie en transformers 5, pas un
+   tenseur. L'embedding 768-D est dans `pooler_output`.
+
+Aucun des deux n'était détectable sans exécuter le code.
+
+## Le défaut de conception
+
+Avec deux clusters, les arbitres en turquoise atterrissaient dans le cluster de
+l'équipe en rouge — environ une vignette sur cinq de ce groupe. K-Means ne sait
+pas dire « ni l'un ni l'autre ».
+
+Première parade, **échouée** : rejeter les points trop éloignés des centroïdes.
+Sur les 507 vignettes, le seuil retenu en écartait exactement zéro. Les
+arbitres étant présents à l'ajustement, UMAP les place dans la dispersion
+normale du nuage.
+
+Parade retenue : regrouper en trois clusters, garder les deux plus peuplés
+comme équipes. Résultat mesuré :
+
+| | k=2 | k=3, deux plus gros |
+|---|---|---|
+| Équipe A | 302 (60 %) | 202 (40 %) |
+| Équipe B | 205 (40 %) | 195 (38 %) |
+| Non attribué | 0 | **110 (22 %)** |
+
+Le troisième groupe contient les arbitres, les gardiens en violet et bleu, et
+des vignettes trop floues pour être jugées. Contrôle visuel des deux groupes
+d'équipe : 24 vignettes sur 24 du bon maillot, aucun arbitre.
+
+Les 22 % écartés incluent de vrais joueurs sur images floues. C'est le prix
+assumé : perdre une détection douteuse coûte moins cher que d'attribuer un
+arbitre à une équipe.
+
+## Coût de calcul mesuré
+
+Sur CPU (8 cœurs), SigLIP base traite **3,2 vignettes par seconde**. Avec une
+vingtaine de joueurs par frame, cela fait ~6 s de classification par frame.
+Un match complet est hors de portée sans GPU — ce n'est pas une optimisation
+à faire plus tard, c'est une condition d'exécution.
+
+
+---
+
+# Validation de la géométrie contre le dataset public
+
+Dataset `football-field-detection-f07vi` v15 (Roboflow, **CC BY 4.0**, donc
+exploitable commercialement avec attribution) : 255 images d'entraînement, 34
+de validation, 28 de test, annotées en 32 points clés.
+
+## L'ordre des points est confirmé
+
+Le `flip_idx` du dataset et celui calculé par symétrie dans `geometry.py`
+coïncident sur les 32 entrées, sans qu'aucune n'ait été recopiée. C'était le
+point de rupture silencieux le plus dangereux du projet : un ordre divergent
+aurait produit un modèle qui converge normalement en prédisant n'importe quoi.
+
+## Les dimensions du terrain étaient fausses
+
+En ajustant l'homographie sur les 228 images annotées exploitables et en
+mesurant l'erreur de reprojection :
+
+| Géométrie | Erreur |
+|---|---|
+| **105 × 68 m, surface 16,50 × 40,32 m** | **0,398 %** |
+| 110 × 68 m | 0,416 % |
+| 105 × 66 m | 0,484 % |
+| 100 × 68 m | 0,732 % |
+| 120 × 70 m, surface 20,15 × 41,00 m (convention Roboflow) | 0,960 % |
+
+L'optimum tombe exactement sur le terrain FIFA standard et les cotes de la loi
+du jeu, et il est net : 105 m bat 100 et 110 m sans ambiguïté.
+
+Le dépôt utilisait jusqu'ici 120 × 70 m avec une surface de 20,15 m, valeurs
+reprises des exemples Roboflow. **Toute distance mesurée aurait été gonflée de
+14 %** — un joueur crédité de 11,4 km en ayant couru 10,0 km. Pour un produit
+dont l'argument de vente est la distance parcourue, c'était disqualifiant.
+
+Ce n'est pas une convention arbitraire : les annotateurs ont cliqué sur de
+vrais terrains, donc les annotations portent la géométrie réelle.
+
+## Incertitude résiduelle
+
+Un terrain réel mesure entre 100 et 110 m de long. Les dimensions restent
+réglables par club : celui qui mesure le sien supprime l'incertitude, sinon
+elle vaut environ ± 5 % sur les distances. C'est à dire au client, et c'est
+une mesure au décamètre de cinq minutes.
+
+
+---
+
+# Premier modèle de points clés entraîné
+
+`yolov8m-pose`, 300 époques sur le dataset public. Mesures faites en local avec
+les poids obtenus.
+
+## Un bug de seuil, trouvé en mesurant
+
+Le modèle prédit d'excellents points clés tout en donnant une confiance de
+**boîte** très variable — de 0,05 à 0,89 sur des images comparables. Le seuil
+par défaut d'Ultralytics (0,25) jetait alors l'instance entière, points
+compris. `PitchConfig.instance_confidence` descend ce seuil à 0,02 : le modèle
+ne connaît qu'une classe, il n'y a aucun faux positif à craindre, et le
+filtrage utile se fait sur la confiance des **points**.
+
+Effet mesuré sur les images Djoliba : **42 % → 83 %** d'images exploitables.
+
+## Où en est réellement le modèle
+
+| Domaine | Images exploitables | Erreur médiane |
+|---|---|---|
+| Validation du dataset public | 100 % | 1,46 m |
+| Djoliba, tribune haute | 83 % | 5,29 m |
+| ASKO, bord de touche | **0 %** | — |
+
+Les deux premières lignes ne sont pas strictement comparables : la première
+mesure contre la vérité terrain annotée, la seconde par validation croisée
+faute d'annotations. Cette dernière est plus sévère. L'ordre de grandeur reste
+parlant.
+
+Deux problèmes distincts, tous deux réels :
+
+**Le modèle est sous-entraîné, même sur son propre domaine.** 1,46 m alors que
+le bruit d'annotation du dataset se situe vers 0,42 m. Un `yolov8x-pose`, ou
+davantage d'époques, réduirait cet écart.
+
+**L'écart de domaine est net.** 1,46 m sur le dataset public contre 5,29 m sur
+Djoliba, pourtant filmé en tribune haute comme les images d'entraînement.
+
+**Le bord de touche est un échec total.** Aucune instance détectée, même en
+abaissant le seuil à 0,01. Or le jugement visuel trouvait des repères
+exploitables sur 47 % de ces images : l'information est présente, c'est le
+modèle qui ne sait pas l'extraire. Un affinage sur ce type de prise de vue
+devrait donc récupérer une bonne part de ces 47 %.
+
+## Ce que cela autorise à vendre aujourd'hui
+
+À 5 m d'erreur médiane sur un terrain de 105 m, les positions sont justes à une
+surface de réparation près. C'est assez pour situer le jeu par zones, pas pour
+annoncer la distance parcourue par un joueur.
+
+Ordre des corrections, par rapport coût/effet :
+1. Réentraîner en `yolov8x-pose` — quelques heures de GPU, aucune annotation.
+2. Affiner sur des images de caméra basse — c'est ce qui débloque le marché réel.
+
+
+---
+
+# Première exécution complète sur vidéo réelle
+
+Extrait de 24 s du match Djoliba, modèle de points clés réel, détecteur COCO
+générique en remplacement du modèle spécialisé absent.
+
+## Cadence d'échantillonnage : mesurée
+
+Le nombre d'identités produites par le traqueur sur un même extrait, la
+détection étant calculée une fois puis rejouée à différentes cadences :
+
+| Cadence | Identités | Vues > 3 s | Fragments < 1 s |
+|---|---|---|---|
+| 25 fps | 15 | 11 | 3 |
+| **12,5 fps** | **14** | **11** | **2** |
+| 5 fps | 20 | 13 | 7 |
+| 2 fps | 22 | 10 | 7 |
+
+Passer de 25 à 12,5 fps ne coûte rien — le résultat est même marginalement
+meilleur. En dessous de 5 fps la fragmentation grimpe nettement. Le défaut
+passe donc à 12 fps : c'est la moitié du coût GPU d'un traitement à 25 fps,
+sans perte.
+
+Cela confirme le raisonnement établi plus tôt : la précision de distance
+autoriserait 2 fps, c'est le suivi qui fixe le plancher.
+
+## Un bug que seule l'exécution réelle pouvait révéler
+
+BoT-SORT rend l'identifiant `-1` tant qu'une piste n'est pas confirmée. Le
+pipeline les comptait comme un joueur : **toutes les détections non associées
+fusionnaient en une identité unique**. Sur 24 secondes d'extrait, elle
+affichait 123,5 secondes de présence et la plus grande distance du match.
+
+Le rapport aurait donc présenté au club un « meilleur coureur » entièrement
+fictif. `MatchStats.update_player` refuse maintenant les identifiants négatifs,
+et le pipeline filtre avec `is_tracked` avant d'accumuler.

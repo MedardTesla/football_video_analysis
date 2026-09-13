@@ -1,0 +1,53 @@
+# API et worker séparés : ils ne partagent qu'un volume de données.
+#
+#   docker compose up -d api          # en permanence, petite machine
+#   docker compose up -d worker       # machine GPU, à éteindre si file vide
+#
+# Le worker exige un GPU. Sans lui, un match de 90 minutes prendrait des
+# heures : SigLIP traite environ 3 vignettes par seconde sur processeur.
+
+services:
+  api:
+    build:
+      context: .
+      target: api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - donnees:/data
+    environment:
+      FA_DATA_ROOT: /data
+      # Sans ce jeton, la page d'exploitation n'existe pas.
+      FA_ADMIN_TOKEN: ${FA_ADMIN_TOKEN:-}
+
+  worker:
+    build:
+      context: .
+      target: worker
+    restart: unless-stopped
+    volumes:
+      - donnees:/data
+      # Poids montés en lecture seule : ils changent à chaque
+      # réentraînement et n'ont pas leur place dans l'image.
+      - ./models:/app/models:ro
+    environment:
+      FA_DATA_ROOT: /data
+      # Notification du club. Sans ces variables, le service tourne quand
+      # même : le club récupère son rapport par le lien reçu au dépôt.
+      FA_BASE_URL: ${FA_BASE_URL:-}
+      FA_SMTP_HOST: ${FA_SMTP_HOST:-}
+      FA_SMTP_PORT: ${FA_SMTP_PORT:-587}
+      FA_SMTP_USER: ${FA_SMTP_USER:-}
+      FA_SMTP_PASSWORD: ${FA_SMTP_PASSWORD:-}
+      FA_SMTP_FROM: ${FA_SMTP_FROM:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  donnees:
